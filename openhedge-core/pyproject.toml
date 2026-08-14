@@ -12,3 +12,18 @@ dependencies = []
 [build-system]
 requires = ["uv_build>=0.8.4,<0.9.0"]
 build-backend = "uv_build"
+
+[tool.ruff.lint]
+# "E": Error (pycodestyle) / Style & PEP 8, "F": Pyflakes / Logical Bugs, "I": isort / Import Sorting
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[dependency-groups]
+dev = [
+    "mypy==1.18.2",
+    "ruff>=0.15.12",
+]
