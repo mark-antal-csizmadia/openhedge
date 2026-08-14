@@ -1,0 +1,168 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Any
+from urllib.parse import parse_qs
+
+import httpx
+import pytest
+from openhedge_core.api_client import OpenhedgeApiClient, OpenhedgeApiError
+from openhedge_core.server import MarketHit, MarketListParams, MarketPage, MarketSearchParams
+from openhedge_core.types.market import Event, Market, MarketSource
+
+
+def _market(*, ticker: str, **overrides: Any) -> Market:
+    values: dict[str, Any] = {
+        "source": MarketSource.KALSHI,
+        "ticker": ticker,
+        "event_ticker": "EVT-OPEN",
+        "event_title": "Open event",
+        "series_ticker": "SERIES",
+        "strike_order": 0,
+        "url": f"https://kalshi.com/markets/SERIES/EVT-OPEN?op_market_ticker={ticker}",
+        "category": "Politics",
+        "tags": ["elections"],
+        "question": "Active market",
+        "description": "primary secondary",
+        "outcome_yes": "Yes",
+        "outcome_no": "No",
+        "price_yes": 0.4,
+        "price_no": 0.6,
+    }
+    values.update(overrides)
+    return Market.model_validate(values)
+
+
+@asynccontextmanager
+async def api_client(
+    handler: Any,
+) -> AsyncIterator[OpenhedgeApiClient]:
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://api") as http:
+        yield OpenhedgeApiClient(http)
+
+
+@pytest.mark.asyncio
+async def test_browse_markets_encodes_filters_and_parses_page() -> None:
+    market = _market(ticker="MKT-1")
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["query"] = request.url.query.decode()
+        page = MarketPage(
+            items=[MarketHit(market=market)],
+            next_cursor="next-page",
+            limit=5,
+        )
+        return httpx.Response(200, json=page.model_dump(mode="json"))
+
+    async with api_client(handler) as client:
+        result = await client.browse_markets(
+            MarketListParams(category=["Politics"], price_yes_gte=0.2, price_yes_lte=0.8, limit=5, cursor="abc"),
+        )
+
+    assert captured["path"] == "/markets"
+    query = parse_qs(captured["query"])
+    assert query["category"] == ["Politics"]
+    assert query["price_yes_gte"] == ["0.2"]
+    assert query["price_yes_lte"] == ["0.8"]
+    assert query["limit"] == ["5"]
+    assert query["cursor"] == ["abc"]
+    assert result.next_cursor == "next-page"
+    assert result.limit == 5
+    assert result.items[0].market.ticker == "MKT-1"
+    assert result.items[0].score is None
+
+
+@pytest.mark.asyncio
+async def test_search_markets_sends_query() -> None:
+    market = _market(ticker="MKT-0")
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["query"] = request.url.query.decode()
+        page = MarketPage(items=[MarketHit(market=market, score=0.9)], next_cursor="2", limit=2)
+        return httpx.Response(200, json=page.model_dump(mode="json"))
+
+    async with api_client(handler) as client:
+        result = await client.search_markets(MarketSearchParams(q="oil prices", limit=2, tags=["fed"]))
+
+    assert captured["path"] == "/search"
+    query = parse_qs(captured["query"])
+    assert query["q"] == ["oil prices"]
+    assert query["limit"] == ["2"]
+    assert query["tags"] == ["fed"]
+    assert result.items[0].score == pytest.approx(0.9)
+
+
+@pytest.mark.asyncio
+async def test_get_market_parses_payload() -> None:
+    market = _market(ticker="MKT-1")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/markets/MKT-1"
+        return httpx.Response(200, json=market.model_dump(mode="json"))
+
+    async with api_client(handler) as client:
+        result = await client.get_market("MKT-1")
+
+    assert result.ticker == "MKT-1"
+
+
+@pytest.mark.asyncio
+async def test_get_event_parses_payload() -> None:
+    markets = [
+        _market(ticker="MKT-0", strike_order=0),
+        _market(ticker="MKT-1", strike_order=1),
+    ]
+    event = Event.from_markets(markets)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/events/EVT-OPEN"
+        return httpx.Response(200, json=event.model_dump(mode="json"))
+
+    async with api_client(handler) as client:
+        result = await client.get_event("EVT-OPEN")
+
+    assert result.event_ticker == "EVT-OPEN"
+    assert [market.ticker for market in result.markets] == ["MKT-0", "MKT-1"]
+
+
+@pytest.mark.asyncio
+async def test_get_market_404_raises() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"detail": "market not found"})
+
+    async with api_client(handler) as client:
+        with pytest.raises(OpenhedgeApiError) as exc_info:
+            await client.get_market("MISSING")
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "market not found"
+
+
+@pytest.mark.asyncio
+async def test_search_503_raises() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"detail": "search is unavailable: embeddings are not configured"})
+
+    async with api_client(handler) as client:
+        with pytest.raises(OpenhedgeApiError) as exc_info:
+            await client.search_markets(MarketSearchParams(q="oil"))
+
+    assert exc_info.value.status_code == 503
+    assert "embeddings" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_search_400_raises() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"detail": "invalid cursor"})
+
+    async with api_client(handler) as client:
+        with pytest.raises(OpenhedgeApiError) as exc_info:
+            await client.search_markets(MarketSearchParams(q="oil", cursor="abc"))
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "invalid cursor"

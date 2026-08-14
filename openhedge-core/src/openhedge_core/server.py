@@ -1,0 +1,223 @@
+import logging
+import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Annotated, Any
+
+import uvicorn
+from fastapi import FastAPI, HTTPException, Query, Request
+from openrouter import OpenRouter
+from pydantic import BaseModel, Field
+from qdrant_client import AsyncQdrantClient
+
+from openhedge_core.embeddings import (
+    DEFAULT_EMBEDDING_MODEL,
+    EMBEDDING_DIM,
+    EmbeddingClient,
+    OpenRouterEmbeddingClient,
+)
+from openhedge_core.filters import MarketFilters, to_qdrant_filter
+from openhedge_core.types.market import Event, Market
+from openhedge_core.vector_store import (
+    DEFAULT_QDRANT_COLLECTION,
+    DEFAULT_QDRANT_URL,
+    QdrantVectorStore,
+    VectorStore,
+)
+
+DEFAULT_OPENROUTER_HTTP_REFERER = "https://openhedge.dev"
+DEFAULT_OPENROUTER_APP_TITLE = "openhedge"
+DEFAULT_PAGE_LIMIT = 20
+MAX_PAGE_LIMIT = 100
+MAX_SEARCH_OFFSET = 1000
+EVENT_SCROLL_PAGE_SIZE = 100
+
+logger = logging.getLogger(__name__)
+
+
+class MarketHit(BaseModel):
+    market: Market
+    score: float | None = None
+
+
+class MarketPage(BaseModel):
+    items: list[MarketHit]
+    next_cursor: str | None
+    limit: int
+
+
+class MarketListParams(MarketFilters):
+    limit: int = Field(
+        default=DEFAULT_PAGE_LIMIT,
+        ge=1,
+        le=MAX_PAGE_LIMIT,
+        description="Page size. Defaults to 20, maximum 100.",
+    )
+    cursor: str | None = Field(
+        default=None,
+        description="Pagination cursor from the previous page's next_cursor. Omit for the first page.",
+    )
+
+
+class MarketSearchParams(MarketListParams):
+    q: str = Field(
+        min_length=1,
+        description="Natural-language query embedded and matched against markets.",
+    )
+
+
+def create_app(*, store: VectorStore | None = None, embedder: EmbeddingClient | None = None) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        if store is not None:
+            yield
+            return
+
+        qdrant = AsyncQdrantClient(
+            url=os.environ.get("QDRANT_URL", DEFAULT_QDRANT_URL),
+            api_key=os.environ.get("QDRANT_API_KEY") or None,
+        )
+        try:
+            app.state.store = QdrantVectorStore(
+                qdrant,
+                collection=os.environ.get("QDRANT_COLLECTION", DEFAULT_QDRANT_COLLECTION),
+            )
+            api_key = os.environ.get("OPENROUTER_API_KEY")
+            if not api_key:
+                logger.warning("OPENROUTER_API_KEY is not set; /search will return 503")
+                app.state.embedder = None
+                yield
+                return
+            model = os.environ.get("OPENROUTER_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
+            dimensions = int(os.environ.get("OPENROUTER_EMBEDDING_DIM", str(EMBEDDING_DIM)))
+            async with OpenRouter(
+                api_key=api_key,
+                http_referer=DEFAULT_OPENROUTER_HTTP_REFERER,
+                x_open_router_title=DEFAULT_OPENROUTER_APP_TITLE,
+            ) as openrouter_client:
+                app.state.embedder = OpenRouterEmbeddingClient(
+                    openrouter_client,
+                    model=model,
+                    dimensions=dimensions,
+                )
+                yield
+        finally:
+            await qdrant.close()
+
+    app = FastAPI(title="openhedge", lifespan=lifespan)
+    if store is not None:
+        app.state.store = store
+        app.state.embedder = embedder
+    app.add_api_route("/health", health, methods=["GET"])
+    app.add_api_route("/markets", browse_markets, methods=["GET"], response_model=MarketPage)
+    app.add_api_route("/markets/{ticker}", get_market, methods=["GET"], response_model=Market)
+    app.add_api_route("/events/{event_ticker}", get_event, methods=["GET"], response_model=Event)
+    app.add_api_route("/search", search_markets, methods=["GET"], response_model=MarketPage)
+    return app
+
+
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+async def browse_markets(
+    request: Request,
+    params: Annotated[MarketListParams, Query()],
+) -> MarketPage:
+    store: VectorStore = request.app.state.store
+    payloads, next_cursor = await store.scroll_points(
+        to_qdrant_filter(params),
+        limit=params.limit,
+        cursor=params.cursor or None,
+    )
+    return MarketPage(
+        items=[MarketHit(market=Market.model_validate(payload)) for payload in payloads],
+        next_cursor=next_cursor,
+        limit=params.limit,
+    )
+
+
+async def search_markets(
+    request: Request,
+    params: Annotated[MarketSearchParams, Query()],
+) -> MarketPage:
+    embedder: EmbeddingClient | None = request.app.state.embedder
+    if embedder is None:
+        raise HTTPException(status_code=503, detail="search is unavailable: embeddings are not configured")
+    offset = _search_offset(params.cursor)
+    if offset + params.limit > MAX_SEARCH_OFFSET:
+        raise HTTPException(status_code=400, detail="cursor exceeds maximum search offset")
+
+    vectors = await embedder.embed_batch([params.q])
+    if len(vectors) != 1:
+        raise HTTPException(status_code=502, detail="embedding failed")
+
+    store: VectorStore = request.app.state.store
+    hits = await store.query_points(
+        vectors[0],
+        to_qdrant_filter(params),
+        limit=params.limit + 1,
+        offset=offset,
+    )
+    has_more = len(hits) > params.limit
+    page_hits = hits[: params.limit]
+    return MarketPage(
+        items=[MarketHit(market=Market.model_validate(payload), score=score) for payload, score in page_hits],
+        next_cursor=str(offset + params.limit) if has_more else None,
+        limit=params.limit,
+    )
+
+
+async def get_market(request: Request, ticker: str) -> Market:
+    store: VectorStore = request.app.state.store
+    payload = await store.get_payload(ticker)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="market not found")
+    return Market.model_validate(payload)
+
+
+async def get_event(request: Request, event_ticker: str) -> Event:
+    store: VectorStore = request.app.state.store
+    qfilter = to_qdrant_filter(MarketFilters(event_ticker=[event_ticker]))
+    payloads: list[dict[str, Any]] = []
+    cursor: str | None = None
+    while True:
+        page, cursor = await store.scroll_points(qfilter, limit=EVENT_SCROLL_PAGE_SIZE, cursor=cursor)
+        payloads.extend(page)
+        if cursor is None:
+            break
+    if not payloads:
+        raise HTTPException(status_code=404, detail="event not found")
+    markets = [Market.model_validate(payload) for payload in payloads]
+    return Event.from_markets(markets)
+
+
+def _search_offset(cursor: str | None) -> int:
+    if not cursor:
+        return 0
+    try:
+        offset = int(cursor)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid cursor") from exc
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="invalid cursor")
+    return offset
+
+
+app = create_app()
+
+
+def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    uvicorn.run(
+        app,
+        host=os.environ.get("API_HOST", "0.0.0.0"),
+        port=int(os.environ.get("API_PORT", "8000")),
+    )
+
+
+if __name__ == "__main__":
+    main()
