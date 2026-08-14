@@ -1,0 +1,36 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: check-toml
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: openhedge-core.ruff-format
+        name: ruff-format (openhedge-core)
+        # Formats Python code to ensure consistent styling.
+        entry: uv run --project openhedge-core ruff format --config openhedge-core/pyproject.toml
+        files: ^openhedge-core/
+        language: system
+        types: [python]
+
+      - id: openhedge-core.ruff
+        name: ruff (openhedge-core)
+        # Lints Python code and automatically fixes safe violations.
+        entry: uv run --project openhedge-core ruff check --fix --config openhedge-core/pyproject.toml
+        files: ^openhedge-core/
+        language: system
+        types: [python]
+
+      - id: openhedge-core.mypy
+        name: mypy (openhedge-core)
+        # Performs static type checking for Python files.
+        entry: uv run --project openhedge-core mypy --config-file openhedge-core/pyproject.toml
+        files: ^openhedge-core/
+        language: system
+        types: [python]
