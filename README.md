@@ -30,3 +30,24 @@ Run all hooks:
 ```bash
 pre-commit run --all-files
 ```
+
+## Docker
+
+```bash
+docker compose up
+```
+
+- REST API: `http://localhost:8000`
+- MCP (Streamable HTTP): `http://localhost:8001/mcp`
+
+Example MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "openhedge": {
+      "url": "http://localhost:8001/mcp"
+    }
+  }
+}
+```
