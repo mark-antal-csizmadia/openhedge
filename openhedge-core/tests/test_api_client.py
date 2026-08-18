@@ -82,6 +82,7 @@ async def test_browse_markets_encodes_filters_and_parses_page() -> None:
     assert result.limit == 5
     assert result.items[0].market.ticker == "MKT-1"
     assert result.items[0].score is None
+    assert "description" not in result.items[0].market.model_dump()
 
 
 @pytest.mark.asyncio
@@ -104,6 +105,7 @@ async def test_search_markets_sends_query() -> None:
     assert query["limit"] == ["2"]
     assert query["tags"] == ["fed"]
     assert result.items[0].score == pytest.approx(0.9)
+    assert "description" not in result.items[0].market.model_dump()
 
 
 @pytest.mark.asyncio
@@ -118,6 +120,7 @@ async def test_get_market_parses_payload() -> None:
         result = await client.get_market("MKT-1")
 
     assert result.ticker == "MKT-1"
+    assert result.description == "primary secondary"
 
 
 @pytest.mark.asyncio
@@ -137,6 +140,7 @@ async def test_get_event_parses_payload() -> None:
 
     assert result.event_ticker == "EVT-OPEN"
     assert [market.ticker for market in result.markets] == ["MKT-0", "MKT-1"]
+    assert "description" not in result.markets[0].model_dump()
 
 
 @pytest.mark.asyncio

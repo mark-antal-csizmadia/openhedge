@@ -51,11 +51,22 @@ class VectorStore(Protocol):
     async def delete_points(self, ids: Sequence[str]) -> None: ...
 
     async def scroll_points(
-        self, filters: Filter | None, *, limit: int, cursor: str | None
+        self,
+        filters: Filter | None,
+        *,
+        limit: int,
+        cursor: str | None,
+        payload_fields: Sequence[str] | None = None,
     ) -> tuple[list[dict[str, Any]], str | None]: ...
 
     async def query_points(
-        self, vector: Sequence[float], filters: Filter | None, *, limit: int, offset: int
+        self,
+        vector: Sequence[float],
+        filters: Filter | None,
+        *,
+        limit: int,
+        offset: int,
+        payload_fields: Sequence[str] | None = None,
     ) -> list[tuple[dict[str, Any], float]]: ...
 
 
@@ -164,14 +175,19 @@ class QdrantVectorStore:
         )
 
     async def scroll_points(
-        self, filters: Filter | None, *, limit: int, cursor: str | None
+        self,
+        filters: Filter | None,
+        *,
+        limit: int,
+        cursor: str | None,
+        payload_fields: Sequence[str] | None = None,
     ) -> tuple[list[dict[str, Any]], str | None]:
         records, next_page_offset = await self._client.scroll(
             collection_name=self._collection,
             scroll_filter=filters,
             limit=limit,
             offset=cursor,
-            with_payload=True,
+            with_payload=_payload_selector(payload_fields),
             with_vectors=False,
         )
         payloads = [_record_payload(record.payload) for record in records]
@@ -179,7 +195,13 @@ class QdrantVectorStore:
         return payloads, next_cursor
 
     async def query_points(
-        self, vector: Sequence[float], filters: Filter | None, *, limit: int, offset: int
+        self,
+        vector: Sequence[float],
+        filters: Filter | None,
+        *,
+        limit: int,
+        offset: int,
+        payload_fields: Sequence[str] | None = None,
     ) -> list[tuple[dict[str, Any], float]]:
         response = await self._client.query_points(
             collection_name=self._collection,
@@ -187,10 +209,16 @@ class QdrantVectorStore:
             query_filter=filters,
             limit=limit,
             offset=offset,
-            with_payload=True,
+            with_payload=_payload_selector(payload_fields),
             with_vectors=False,
         )
         return [(_record_payload(point.payload), float(point.score)) for point in response.points]
+
+
+def _payload_selector(payload_fields: Sequence[str] | None) -> bool | list[str]:
+    if payload_fields is None:
+        return True
+    return list(payload_fields)
 
 
 def _record_payload(payload: dict[str, Any] | None) -> dict[str, Any]:

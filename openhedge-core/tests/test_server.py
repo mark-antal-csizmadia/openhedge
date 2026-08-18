@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 import pytest
 from openhedge_core.server import EVENT_SCROLL_PAGE_SIZE, MAX_SEARCH_OFFSET, create_app
-from openhedge_core.types.market import Market, MarketSource
+from openhedge_core.types.market import MARKET_SUMMARY_PAYLOAD_FIELDS, Market, MarketSource
 from openhedge_core.vector_store import PayloadUpdate, VectorPoint
 from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
 
@@ -40,6 +40,27 @@ def _market(*, ticker: str, **overrides: Any) -> Market:
     return Market.model_validate(values)
 
 
+_FAT_MARKET_FIELDS = {
+    "description",
+    "tags",
+    "start_datetime",
+    "volume",
+    "volume_24hr",
+    "open_interest",
+    "updated_datetime",
+}
+
+
+def _assert_compact_market(market: dict[str, Any]) -> None:
+    assert market["ticker"]
+    assert market["question"]
+    assert "yes_ask_size" in market
+    assert "yes_bid_size" in market
+    assert "strike_order" in market
+    for field in _FAT_MARKET_FIELDS:
+        assert field not in market
+
+
 class FakeSearchStore:
     def __init__(self) -> None:
         self.scroll_calls: list[dict[str, Any]] = []
@@ -65,15 +86,36 @@ class FakeSearchStore:
         return
 
     async def scroll_points(
-        self, filters: Filter | None, *, limit: int, cursor: str | None
+        self,
+        filters: Filter | None,
+        *,
+        limit: int,
+        cursor: str | None,
+        payload_fields: Sequence[str] | None = None,
     ) -> tuple[list[dict[str, Any]], str | None]:
-        self.scroll_calls.append({"filters": filters, "limit": limit, "cursor": cursor})
+        self.scroll_calls.append(
+            {"filters": filters, "limit": limit, "cursor": cursor, "payload_fields": payload_fields}
+        )
         return self.scroll_result
 
     async def query_points(
-        self, vector: Sequence[float], filters: Filter | None, *, limit: int, offset: int
+        self,
+        vector: Sequence[float],
+        filters: Filter | None,
+        *,
+        limit: int,
+        offset: int,
+        payload_fields: Sequence[str] | None = None,
     ) -> list[tuple[dict[str, Any], float]]:
-        self.query_calls.append({"vector": list(vector), "filters": filters, "limit": limit, "offset": offset})
+        self.query_calls.append(
+            {
+                "vector": list(vector),
+                "filters": filters,
+                "limit": limit,
+                "offset": offset,
+                "payload_fields": payload_fields,
+            }
+        )
         return list(self.query_result)
 
     async def get_payload(self, ticker: str) -> dict[str, Any] | None:
@@ -132,10 +174,12 @@ async def test_browse_returns_page_and_forwards_filters() -> None:
     assert body["next_cursor"] == "next-page"
     assert body["items"][0]["market"]["ticker"] == "MKT-1"
     assert body["items"][0]["score"] is None
+    _assert_compact_market(body["items"][0]["market"])
     assert len(store.scroll_calls) == 1
     call = store.scroll_calls[0]
     assert call["limit"] == 5
     assert call["cursor"] == "abc"
+    assert call["payload_fields"] == MARKET_SUMMARY_PAYLOAD_FIELDS
     conditions = [condition for condition in (call["filters"].must or []) if isinstance(condition, FieldCondition)]
     by_key = {condition.key: condition for condition in conditions}
     assert by_key["category"].match == MatchValue(value="Politics")
@@ -157,11 +201,13 @@ async def test_search_embeds_query_and_paginates() -> None:
     assert body["next_cursor"] == "2"
     assert [item["market"]["ticker"] for item in body["items"]] == ["MKT-0", "MKT-1"]
     assert body["items"][0]["score"] == pytest.approx(0.9)
+    _assert_compact_market(body["items"][0]["market"])
     assert len(store.query_calls) == 1
     call = store.query_calls[0]
     assert call["vector"] == [1.0, 0.0, 0.0]
     assert call["limit"] == 3
     assert call["offset"] == 0
+    assert call["payload_fields"] == MARKET_SUMMARY_PAYLOAD_FIELDS
     conditions = [condition for condition in (call["filters"].must or []) if isinstance(condition, FieldCondition)]
     assert conditions[0].key == "tags"
     assert conditions[0].match == MatchValue(value="fed")
@@ -216,7 +262,11 @@ async def test_get_market_by_ticker() -> None:
     async with api_client(store) as client:
         response = await client.get("/markets/MKT-1")
     assert response.status_code == 200
-    assert response.json()["ticker"] == "MKT-1"
+    body = response.json()
+    assert body["ticker"] == "MKT-1"
+    assert body["description"] == "primary secondary"
+    assert body["volume"] == pytest.approx(100.0)
+    assert body["open_interest"] == pytest.approx(50.0)
     assert store.get_payload_calls == ["MKT-1"]
 
 
@@ -244,9 +294,13 @@ async def test_get_event_orders_markets_by_strike_order() -> None:
     assert body["event_title"] == "Open event"
     assert [market["ticker"] for market in body["markets"]] == ["MKT-0", "MKT-1", "MKT-2"]
     assert [market["strike_order"] for market in body["markets"]] == [0, 1, 2]
+    assert "tags" not in body
+    for market in body["markets"]:
+        _assert_compact_market(market)
     assert len(store.scroll_calls) == 1
     call = store.scroll_calls[0]
     assert call["limit"] == EVENT_SCROLL_PAGE_SIZE
+    assert call["payload_fields"] == MARKET_SUMMARY_PAYLOAD_FIELDS
     conditions = [condition for condition in (call["filters"].must or []) if isinstance(condition, FieldCondition)]
     assert conditions[0].key == "event_ticker"
     assert conditions[0].match == MatchValue(value="EVT-OPEN")

@@ -119,6 +119,10 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "risk" not in _schema_text(hedge_schema)
     assert "natural-language" in (by_name["search_markets"].description or "").lower()
     assert "strike_order" in (by_name["get_event"].description or "")
+    assert "compact" in (by_name["browse_markets"].description or "").lower()
+    assert "compact" in (by_name["search_markets"].description or "").lower()
+    assert "compact" in (by_name["get_event"].description or "").lower()
+    assert "description" in (by_name["get_market"].description or "").lower()
     hedge_description = (by_name["hedge"].description or "").lower()
     assert "ticker" in hedge_description
     assert "search_markets" in hedge_description
@@ -259,6 +263,7 @@ async def test_list_prompts_and_resources() -> None:
     prompt_text = "".join(getattr(message.content, "text", "") or "" for message in prompt.messages)
     assert "diesel above $5" in prompt_text
     assert "search_markets" in prompt_text.lower()
+    assert "get_market" in prompt_text.lower()
     assert "none fits" in prompt_text.lower()
     assert "hedge" in prompt_text.lower()
     resource_text = "".join(block.text for block in resource)

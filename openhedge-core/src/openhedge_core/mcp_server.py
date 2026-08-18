@@ -35,13 +35,16 @@ openhedge discovers hedges in event contracts and prediction markets. It does no
 
 Workflow:
 1. Use search_markets (and page / try several queries) when the user describes an exposure in
-   prose. Use browse_markets when they already have structured filters.
-2. Use get_event when a strike ladder might fit. Read question, yes_outcome/no_outcome, and
-   description; drop poor proxies. If none map cleanly, say none fits.
-3. Use hedge only after you have chosen tickers. Pass legs as {{ticker, side}} plus optional
-   estimated_hit_dollars. hedge fetches those markets and sizes a cash-flow hedge; it does not
-   search. Link the user to each candidate's market.url.
-4. Use get_market to inspect one ticker without sizing.
+   prose. Use browse_markets when they already have structured filters. Hits are compact:
+   question, outcomes, prices/sizes, and url — not resolution rules.
+2. Use get_event when a strike ladder might fit. Compare question, yes_outcome/no_outcome,
+   and strike_order. Call get_market on shortlisted tickers and read description (resolution
+   rules); drop poor proxies. If none map cleanly, say none fits.
+3. Use hedge only after you have chosen tickers and read their rules via get_market. Pass
+   legs as {{ticker, side}} plus optional estimated_hit_dollars. hedge fetches those markets
+   and sizes a cash-flow hedge; it does not search. Link the user to each candidate's
+   market.url.
+4. Use get_market to fetch the full record for one ticker, including description.
 
 Honesty: search returns nearest neighbors, not guaranteed hedges. State basis risk explicitly.
 Read resource openhedge://docs/hedge-math for settlement, Yes/No complement, and sizing formulas.
@@ -49,7 +52,7 @@ The hedge_risk prompt is the playbook for collecting markets then sizing.
 
 Pagination: if a page includes next_cursor, pass it back as cursor for the next page. Search cursors
 are numeric offsets and cannot exceed {MAX_SEARCH_OFFSET}.
-Prices are in dollars in [0, 1]. yes_ask_price is the best YES sell offer; yes_bid_price is the best YES buy offer. A YES ask plus the corresponding NO bid equals 1.0. Records also include yes_ask_size and yes_bid_size.
+Prices are in dollars in [0, 1]. yes_ask_price is the best YES sell offer; yes_bid_price is the best YES buy offer. A YES ask plus the corresponding NO bid equals 1.0. Compact hits include yes_ask_size and yes_bid_size.
 Keyword filters are lists (OR within a field). Range filters are inclusive.
 search_markets requires embeddings on the upstream API and fails if they are not configured.
 """
@@ -68,8 +71,8 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
     async def hedge(params: HedgeParams) -> HedgeResult:
         """Size event-contract hedges on markets you already chose.
 
-        Use this after search_markets, browse_markets, or get_event, once you have tickers
-        whose rules map to the user's exposure. Do not use this to look up markets.
+        Use this after search_markets, browse_markets, or get_event, and after get_market
+        on each ticker so you have read the resolution rules. Do not use this to look up markets.
 
         For each leg it fetches the ticker and sizes a buy of that side at the current best
         ask. Each candidate includes premium, gross $1 payout, residual P&L when a dollar hit
@@ -95,7 +98,8 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
 
         Use this when the user already knows filters such as category, tags, tickers, or price
         ranges, and does not need semantic search. Results are not ranked by relevance; each
-        item's score is null.
+        item's score is null. Hits are compact (question, outcomes, prices/sizes, url); call
+        get_market for resolution rules.
 
         Args:
             params: Filters plus page size and optional cursor. Keyword list filters are OR'd
@@ -103,7 +107,8 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
                 `next_cursor` from the previous page as `cursor`. Omit `cursor` for the first page.
 
         Returns:
-            A page of markets (`items`, `next_cursor`, `limit`). Follow `next_cursor` until it is null.
+            A page of compact market hits (`items`, `next_cursor`, `limit`). Follow `next_cursor`
+            until it is null.
         """
         return await _call_api(api_client.browse_markets, params)
 
@@ -112,7 +117,8 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         """Semantically search markets for hedges matching a natural-language query.
 
         Prefer this over browse_markets when the user describes an exposure, event, or topic
-        in prose. After you have a set worth hedging, call hedge with those tickers. The
+        in prose. Hits are compact (question, outcomes, prices/sizes, url). Call get_market
+        for resolution rules before keeping a proxy, then hedge with those tickers. The
         upstream API embeds `q` and ranks markets by similarity. Optional filters restrict
         the candidate set.
 
@@ -122,7 +128,8 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
                 must not exceed the maximum search offset.
 
         Returns:
-            A page of markets with similarity `score` on each hit. Follow `next_cursor` until it is null.
+            A page of compact market hits with similarity `score` on each. Follow `next_cursor`
+            until it is null.
 
         Raises:
             ToolError: If embeddings are not configured (upstream 503), `q` is empty (422),
@@ -136,9 +143,10 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
     ) -> Market:
         """Fetch one market by ticker.
 
-        Use after search_markets or browse_markets when you need the full record: question,
-        resolution rules, yes/no outcomes, ask/bid prices and sizes, volume, and the canonical
-        platform URL. hedge fetches this itself for each sized leg.
+        Use after search_markets, browse_markets, or get_event when you need the full record:
+        question, resolution rules (`description`), yes/no outcomes, ask/bid prices and sizes,
+        volume, and the canonical platform URL. List and event tools omit description. hedge
+        fetches this itself for each sized leg.
 
         Args:
             ticker: Market primary key, typically taken from a previous page item.
@@ -161,12 +169,14 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         """Fetch an event and all of its markets, ordered by strike_order.
 
         Use when comparing related contracts in the same event (for example a ladder of strikes).
+        Markets are compact (question, outcomes, prices/sizes, strike_order); call get_market
+        for resolution rules on shortlisted tickers.
 
         Args:
             event_ticker: Event primary key, typically `event_ticker` from a market record.
 
         Returns:
-            The event with `markets` sorted by `strike_order`.
+            The event with compact `markets` sorted by `strike_order`.
 
         Raises:
             ToolError: If no markets exist for `event_ticker` (upstream 404).
@@ -184,10 +194,11 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
             f"The user wants to hedge this exposure:\n\n{risk}\n\n"
             "1. Discover markets with search_markets (try several queries and page if needed). "
             "Use browse_markets for structured filters. If a strike ladder might fit, call "
-            "get_event and compare markets by strike_order.\n"
-            "2. Read question, yes_outcome/no_outcome, and description (resolution rules). "
-            "Keep only clean proxies. State basis risk explicitly. Do not force a match; "
-            "if none fits, stop and say so. Do not call hedge yet.\n"
+            "get_event and compare markets by strike_order. Those results are compact.\n"
+            "2. Call get_market on shortlisted tickers. Read question, yes_outcome/no_outcome, "
+            "and description (resolution rules). Keep only clean proxies. State basis risk "
+            "explicitly. Do not force a match; if none fits, stop and say so. Do not call "
+            "hedge yet.\n"
             "3. Call hedge with legs as {{ticker, side}} for the kept markets. Default side "
             "is yes; use no when that market's NO resolution is the hedge. If they gave a "
             "dollar loss, pass estimated_hit_dollars.\n"

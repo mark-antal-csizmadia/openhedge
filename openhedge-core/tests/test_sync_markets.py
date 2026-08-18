@@ -88,12 +88,23 @@ class FakeVectorStore:
             self.points.pop(ticker, None)
 
     async def scroll_points(
-        self, filters: Filter | None, *, limit: int, cursor: str | None
+        self,
+        filters: Filter | None,
+        *,
+        limit: int,
+        cursor: str | None,
+        payload_fields: Sequence[str] | None = None,
     ) -> tuple[list[dict[str, Any]], str | None]:
         raise NotImplementedError
 
     async def query_points(
-        self, vector: Sequence[float], filters: Filter | None, *, limit: int, offset: int
+        self,
+        vector: Sequence[float],
+        filters: Filter | None,
+        *,
+        limit: int,
+        offset: int,
+        payload_fields: Sequence[str] | None = None,
     ) -> list[tuple[dict[str, Any], float]]:
         raise NotImplementedError
 
