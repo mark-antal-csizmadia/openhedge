@@ -1,0 +1,46 @@
+## {{ headline }}
+
+{{ basis_risk }}
+{% if verdict == "none" -%}
+
+No current market fits this exposure.
+{% elif unit_economics -%}
+
+You pay up front: {{ premium }}
+Market pays gross: {{ gross }} (unit $1.00 payout)
+
+{{ question }} ({{ side }})
+
+Open this market: {{ url }}
+{% else -%}
+
+You pay up front: {{ premium }}
+Estimated hit: {{ hit }}
+Market pays gross: {{ gross }}
+
+{{ question }} ({{ side }})
+
+### Event happens
+
+Estimated hit: {{ hit_signed }}
+Market pays: {{ gross_signed }}
+Paid up front: {{ premium_signed }}
+Net: {{ net_if_pays }}
+
+### Event does not
+
+Net: {{ net_if_expires }}
+{% if liquidity_constrained -%}
+
+Liquidity constrained: wanted {{ unconstrained_contracts }} contracts ({{ target }}); book quoted {{ available_size }}. Filled {{ contracts }} contracts ({{ gross }} gross); coverage achieved {{ coverage_achieved }} of estimated hit. Size is capped at that ask; deeper book levels are not used.
+{% endif %}
+
+Open this market: {{ url }}
+{% endif %}
+{% if other_exposures -%}
+
+### Other exposures
+{% for exposure in other_exposures -%}
+- {{ exposure }}
+{% endfor %}
+{% endif %}
