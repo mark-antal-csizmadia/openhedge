@@ -13,7 +13,7 @@ from starlette.responses import JSONResponse
 
 from openhedge_core.api_client import MarketApi, OpenhedgeApiClient, OpenhedgeApiError
 from openhedge_core.hedge import HEDGE_MATH_MARKDOWN, HedgeParams, HedgeResult, size_hedges
-from openhedge_core.server import MAX_SEARCH_OFFSET, MarketListParams, MarketPage, MarketSearchParams
+from openhedge_core.server import MarketListParams, MarketPage, MarketSearchParams
 from openhedge_core.types.market import Event, Market
 
 T = TypeVar("T")
@@ -30,18 +30,18 @@ _READ_ONLY_TOOL = ToolAnnotations(
     openWorldHint=True,
 )
 
-INSTRUCTIONS = f"""\
+INSTRUCTIONS = """\
 openhedge discovers hedges in event contracts and prediction markets. It does not place orders.
 
 Workflow:
-1. Use search_markets (and page / try several queries) when the user describes an exposure in
+1. Use search_markets (try several queries or add filters) when the user describes an exposure in
    prose. Use browse_markets when they already have structured filters. Hits are compact:
    question, outcomes, prices/sizes, and url — not resolution rules.
 2. Use get_event when a strike ladder might fit. Compare question, yes_outcome/no_outcome,
    and strike_order. Call get_market on shortlisted tickers and read description (resolution
    rules); drop poor proxies. If none map cleanly, say none fits.
 3. Use hedge only after you have chosen tickers and read their rules via get_market. Pass
-   legs as {{ticker, side}} plus optional estimated_hit_dollars. hedge fetches those markets
+   legs as {ticker, side} plus optional estimated_hit_dollars. hedge fetches those markets
    and sizes a cash-flow hedge; it does not search. Link the user to each candidate's
    market.url.
 4. Use get_market to fetch the full record for one ticker, including description.
@@ -50,8 +50,9 @@ Honesty: search returns nearest neighbors, not guaranteed hedges. State basis ri
 Read resource openhedge://docs/hedge-math for settlement, Yes/No complement, and sizing formulas.
 The hedge_risk prompt is the playbook for collecting markets then sizing.
 
-Pagination: if a page includes next_cursor, pass it back as cursor for the next page. Search cursors
-are numeric offsets and cannot exceed {MAX_SEARCH_OFFSET}.
+Pagination: browse_markets uses cursor pagination. If a page includes next_cursor, pass it back as
+cursor for the next page. search_markets returns a single page; refine q or add filters instead of
+paging.
 Prices are in dollars in [0, 1]. yes_ask_price is the best YES sell offer; yes_bid_price is the best YES buy offer. A YES ask plus the corresponding NO bid equals 1.0. Compact hits include yes_ask_size and yes_bid_size.
 Keyword filters are lists (OR within a field). Range filters are inclusive.
 search_markets requires embeddings on the upstream API and fails if they are not configured.
@@ -120,20 +121,18 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         in prose. Hits are compact (question, outcomes, prices/sizes, url). Call get_market
         for resolution rules before keeping a proxy, then hedge with those tickers. The
         upstream API embeds `q` and ranks markets by similarity. Optional filters restrict
-        the candidate set.
+        the candidate set. This is a single page; refine `q` or add filters rather than paging.
 
         Args:
-            params: Required `q` plus the same filters and pagination as browse_markets.
-                Search `cursor` is a numeric offset from `next_cursor`. The offset plus `limit`
-                must not exceed the maximum search offset.
+            params: Required `q` plus optional filters and `limit` (default 8, maximum 20).
+                Do not page; refine `q` or add filters for more results.
 
         Returns:
-            A page of compact market hits with similarity `score` on each. Follow `next_cursor`
-            until it is null.
+            Compact market hits with similarity `score` on each. A single page; `next_cursor`
+            is always null.
 
         Raises:
-            ToolError: If embeddings are not configured (upstream 503), `q` is empty (422),
-                or `cursor` is invalid or past the maximum offset (400).
+            ToolError: If embeddings are not configured (upstream 503) or `q` is empty (422).
         """
         return await _call_api(api_client.search_markets, params)
 
@@ -192,7 +191,7 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         """
         return (
             f"The user wants to hedge this exposure:\n\n{risk}\n\n"
-            "1. Discover markets with search_markets (try several queries and page if needed). "
+            "1. Discover markets with search_markets (try several queries or add filters). "
             "Use browse_markets for structured filters. If a strike ladder might fit, call "
             "get_event and compare markets by strike_order. Those results are compact.\n"
             "2. Call get_market on shortlisted tickers. Read question, yes_outcome/no_outcome, "

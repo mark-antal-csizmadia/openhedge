@@ -103,7 +103,6 @@ class FakeVectorStore:
         filters: Filter | None,
         *,
         limit: int,
-        offset: int,
         payload_fields: Sequence[str] | None = None,
     ) -> list[tuple[dict[str, Any], float]]:
         raise NotImplementedError

@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from json import loads
 from typing import Any
 from urllib.parse import parse_qs
 
@@ -92,19 +93,22 @@ async def test_search_markets_sends_query() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["path"] = request.url.path
-        captured["query"] = request.url.query.decode()
-        page = MarketPage(items=[MarketHit(market=market, score=0.9)], next_cursor="2", limit=2)
+        captured["method"] = request.method
+        captured["body"] = request.content.decode()
+        page = MarketPage(items=[MarketHit(market=market, score=0.9)], next_cursor=None, limit=2)
         return httpx.Response(200, json=page.model_dump(mode="json"))
 
     async with api_client(handler) as client:
         result = await client.search_markets(MarketSearchParams(q="oil prices", limit=2, tags=["fed"]))
 
     assert captured["path"] == "/search"
-    query = parse_qs(captured["query"])
-    assert query["q"] == ["oil prices"]
-    assert query["limit"] == ["2"]
-    assert query["tags"] == ["fed"]
+    assert captured["method"] == "POST"
+    body = loads(captured["body"])
+    assert body["q"] == "oil prices"
+    assert body["limit"] == 2
+    assert body["tags"] == ["fed"]
     assert result.items[0].score == pytest.approx(0.9)
+    assert result.next_cursor is None
     assert "description" not in result.items[0].market.model_dump()
 
 
@@ -167,16 +171,3 @@ async def test_search_503_raises() -> None:
 
     assert exc_info.value.status_code == 503
     assert "embeddings" in exc_info.value.detail
-
-
-@pytest.mark.asyncio
-async def test_search_400_raises() -> None:
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(400, json={"detail": "invalid cursor"})
-
-    async with api_client(handler) as client:
-        with pytest.raises(OpenhedgeApiError) as exc_info:
-            await client.search_markets(MarketSearchParams(q="oil", cursor="abc"))
-
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == "invalid cursor"

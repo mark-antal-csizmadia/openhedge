@@ -7,7 +7,7 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from openhedge_core.api_client import OpenhedgeApiError
 from openhedge_core.hedge import HEDGE_MATH_MARKDOWN, HedgeResult
-from openhedge_core.mcp_server import create_mcp
+from openhedge_core.mcp_server import INSTRUCTIONS, create_mcp
 from openhedge_core.server import MarketHit, MarketListParams, MarketPage, MarketSearchParams
 from openhedge_core.types.market import Event, Market, MarketSource
 
@@ -84,6 +84,16 @@ def _schema_text(schema: dict[str, Any]) -> str:
     return str(schema).lower()
 
 
+def _param_properties(schema: dict[str, Any]) -> dict[str, Any]:
+    props = schema.get("properties") or {}
+    params = props.get("params")
+    if isinstance(params, dict):
+        nested = params.get("properties")
+        if isinstance(nested, dict):
+            return nested
+    return props
+
+
 @pytest.mark.asyncio
 async def test_list_tools_documents_api_surface() -> None:
     mcp = create_mcp(api_client=FakeApiClient())
@@ -107,7 +117,9 @@ async def test_list_tools_documents_api_surface() -> None:
     get_market_schema = by_name["get_market"].inputSchema
     get_event_schema = by_name["get_event"].inputSchema
     assert "q" in _schema_text(search_schema)
-    assert "cursor" in _schema_text(browse_schema)
+    assert "cursor" not in _param_properties(search_schema)
+    assert "cursor" in _param_properties(browse_schema)
+    assert "numeric offset" not in INSTRUCTIONS.lower()
     assert "category" in _schema_text(browse_schema)
     assert "yes_ask_price_gte" in _schema_text(browse_schema)
     assert "dollars" in _schema_text(browse_schema)
@@ -155,7 +167,7 @@ async def test_browse_markets_forwards_params() -> None:
 async def test_search_markets_forwards_query() -> None:
     api = FakeApiClient()
     market = _market(ticker="MKT-0")
-    api.search_result = MarketPage(items=[MarketHit(market=market, score=0.9)], next_cursor="2", limit=2)
+    api.search_result = MarketPage(items=[MarketHit(market=market, score=0.9)], next_cursor=None, limit=2)
     mcp = create_mcp(api_client=api)
     async with Client(mcp) as client:
         result = await client.call_tool(
@@ -166,7 +178,7 @@ async def test_search_markets_forwards_query() -> None:
     assert api.search_calls[0].tags == ["fed"]
     page = MarketPage.model_validate(result.structured_content)
     assert page.items[0].score == pytest.approx(0.9)
-    assert page.next_cursor == "2"
+    assert page.next_cursor is None
 
 
 @pytest.mark.asyncio
