@@ -1,11 +1,11 @@
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import pytest
-from openhedge_core.server import EVENT_SCROLL_PAGE_SIZE, create_app
+from openhedge_core.server import CATEGORY_FACET_LIMIT, EVENT_SCROLL_PAGE_SIZE, TAG_FACET_SCAN_LIMIT, create_app
 from openhedge_core.types.market import MARKET_SUMMARY_PAYLOAD_FIELDS, Market, MarketSource
 from openhedge_core.vector_store import PayloadUpdate, VectorPoint
 from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
@@ -69,6 +69,8 @@ class FakeSearchStore:
         self.scroll_result: tuple[list[dict[str, Any]], str | None] = ([], None)
         self.query_result: list[tuple[dict[str, Any], float]] = []
         self.payloads: dict[str, dict[str, Any]] = {}
+        self.facet_calls: list[dict[str, Any]] = []
+        self.facet_result: dict[str, list[str]] = {}
 
     async def setup(self, *, vector_size: int) -> None:
         return
@@ -119,6 +121,10 @@ class FakeSearchStore:
     async def get_payload(self, ticker: str) -> dict[str, Any] | None:
         self.get_payload_calls.append(ticker)
         return self.payloads.get(ticker)
+
+    async def facet_values(self, field: Literal["category", "tags"], *, limit: int) -> list[str]:
+        self.facet_calls.append({"field": field, "limit": limit})
+        return list(self.facet_result.get(field, []))[:limit]
 
 
 class RecordingEmbedder:
@@ -290,3 +296,34 @@ async def test_get_event_missing_returns_404() -> None:
     async with api_client(FakeSearchStore()) as client:
         response = await client.get("/events/MISSING")
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_categories_returns_sorted_values() -> None:
+    store = FakeSearchStore()
+    store.facet_result["category"] = ["Sports", "Politics", "Economics"]
+    async with api_client(store) as client:
+        response = await client.get("/categories")
+    assert response.status_code == 200
+    assert response.json() == {"items": ["Economics", "Politics", "Sports"]}
+    assert store.facet_calls == [{"field": "category", "limit": CATEGORY_FACET_LIMIT}]
+
+
+@pytest.mark.asyncio
+async def test_search_tags_filters_substring_and_honors_limit() -> None:
+    store = FakeSearchStore()
+    store.facet_result["tags"] = ["elections", "fed", "federal-reserve", "nba"]
+    async with api_client(store) as client:
+        response = await client.get("/tags", params={"q": "FED", "limit": 2})
+    assert response.status_code == 200
+    assert response.json() == {"items": ["fed", "federal-reserve"]}
+    assert store.facet_calls == [{"field": "tags", "limit": TAG_FACET_SCAN_LIMIT}]
+
+
+@pytest.mark.asyncio
+async def test_search_tags_requires_query() -> None:
+    async with api_client(FakeSearchStore()) as client:
+        missing = await client.get("/tags")
+        empty = await client.get("/tags", params={"q": ""})
+    assert missing.status_code == 422
+    assert empty.status_code == 422

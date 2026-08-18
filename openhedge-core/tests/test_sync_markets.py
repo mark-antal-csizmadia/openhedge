@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import Sequence
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import pytest
@@ -112,6 +112,9 @@ class FakeVectorStore:
         if point is None:
             return None
         return point.payload
+
+    async def facet_values(self, field: Literal["category", "tags"], *, limit: int) -> list[str]:
+        raise NotImplementedError
 
 
 class RecordingEmbedder:

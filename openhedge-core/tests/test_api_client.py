@@ -8,7 +8,7 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 from openhedge_core.api_client import OpenhedgeApiClient, OpenhedgeApiError
-from openhedge_core.server import MarketHit, MarketListParams, MarketPage, MarketSearchParams
+from openhedge_core.server import MarketHit, MarketListParams, MarketPage, MarketSearchParams, TagSearchParams
 from openhedge_core.types.market import Event, Market, MarketSource
 
 
@@ -171,3 +171,39 @@ async def test_search_503_raises() -> None:
 
     assert exc_info.value.status_code == 503
     assert "embeddings" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_list_categories_parses_items() -> None:
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["query"] = request.url.query.decode()
+        return httpx.Response(200, json={"items": ["Economics", "Politics"]})
+
+    async with api_client(handler) as client:
+        result = await client.list_categories()
+
+    assert captured["path"] == "/categories"
+    assert captured["query"] == ""
+    assert result.items == ["Economics", "Politics"]
+
+
+@pytest.mark.asyncio
+async def test_search_tags_encodes_query() -> None:
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["query"] = request.url.query.decode()
+        return httpx.Response(200, json={"items": ["fed", "federal-reserve"]})
+
+    async with api_client(handler) as client:
+        result = await client.search_tags(TagSearchParams(q="fed", limit=2))
+
+    assert captured["path"] == "/tags"
+    query = parse_qs(captured["query"])
+    assert query["q"] == ["fed"]
+    assert query["limit"] == ["2"]
+    assert result.items == ["fed", "federal-reserve"]

@@ -8,7 +8,14 @@ from fastmcp.exceptions import ToolError
 from openhedge_core.api_client import OpenhedgeApiError
 from openhedge_core.hedge import HEDGE_MATH_MARKDOWN, HedgeResult
 from openhedge_core.mcp_server import INSTRUCTIONS, create_mcp
-from openhedge_core.server import MarketHit, MarketListParams, MarketPage, MarketSearchParams
+from openhedge_core.server import (
+    MarketHit,
+    MarketListParams,
+    MarketPage,
+    MarketSearchParams,
+    TagSearchParams,
+    VocabList,
+)
 from openhedge_core.types.market import Event, Market, MarketSource
 
 
@@ -47,8 +54,12 @@ class FakeApiClient:
         self.search_calls: list[MarketSearchParams] = []
         self.get_market_calls: list[str] = []
         self.get_event_calls: list[str] = []
+        self.list_categories_calls: int = 0
+        self.search_tags_calls: list[TagSearchParams] = []
         self.browse_result: MarketPage | None = None
         self.search_result: MarketPage | None = None
+        self.categories_result: VocabList | None = None
+        self.tags_result: VocabList | None = None
         self.markets: dict[str, Market] = {}
         self.events: dict[str, Event] = {}
         self.errors: dict[str, OpenhedgeApiError] = {}
@@ -79,6 +90,20 @@ class FakeApiClient:
             raise self.errors[event_ticker]
         return self.events[event_ticker]
 
+    async def list_categories(self) -> VocabList:
+        self.list_categories_calls += 1
+        if "categories" in self.errors:
+            raise self.errors["categories"]
+        assert self.categories_result is not None
+        return self.categories_result
+
+    async def search_tags(self, params: TagSearchParams) -> VocabList:
+        self.search_tags_calls.append(params)
+        if "tags" in self.errors:
+            raise self.errors["tags"]
+        assert self.tags_result is not None
+        return self.tags_result
+
 
 def _schema_text(schema: dict[str, Any]) -> str:
     return str(schema).lower()
@@ -100,13 +125,23 @@ async def test_list_tools_documents_api_surface() -> None:
     async with Client(mcp) as client:
         tools = await client.list_tools()
     by_name = {tool.name: tool for tool in tools}
-    assert set(by_name) == {"hedge", "browse_markets", "search_markets", "get_market", "get_event"}
+    assert set(by_name) == {
+        "hedge",
+        "browse_markets",
+        "search_markets",
+        "get_market",
+        "get_event",
+        "list_categories",
+        "search_tags",
+    }
     titles = {tool.name: tool.title for tool in tools}
     assert titles["hedge"] == "Hedge a risk"
     assert titles["browse_markets"] == "Browse markets"
     assert titles["search_markets"] == "Search markets"
     assert titles["get_market"] == "Get a market"
     assert titles["get_event"] == "Get an event"
+    assert titles["list_categories"] == "List categories"
+    assert titles["search_tags"] == "Search tags"
     for tool in tools:
         assert tool.description
         assert len(tool.description) > 40
@@ -116,6 +151,7 @@ async def test_list_tools_documents_api_surface() -> None:
     search_schema = by_name["search_markets"].inputSchema
     get_market_schema = by_name["get_market"].inputSchema
     get_event_schema = by_name["get_event"].inputSchema
+    search_tags_schema = by_name["search_tags"].inputSchema
     assert "q" in _schema_text(search_schema)
     assert "cursor" not in _param_properties(search_schema)
     assert "cursor" in _param_properties(browse_schema)
@@ -125,6 +161,8 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "dollars" in _schema_text(browse_schema)
     assert "ticker" in _schema_text(get_market_schema)
     assert "event_ticker" in _schema_text(get_event_schema)
+    assert "q" in _schema_text(search_tags_schema)
+    assert "cursor" not in _param_properties(search_tags_schema)
     assert "legs" in _schema_text(hedge_schema)
     assert "ticker" in _schema_text(hedge_schema)
     assert "estimated_hit_dollars" in _schema_text(hedge_schema)
@@ -135,6 +173,8 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "compact" in (by_name["search_markets"].description or "").lower()
     assert "compact" in (by_name["get_event"].description or "").lower()
     assert "description" in (by_name["get_market"].description or "").lower()
+    assert "category" in (by_name["list_categories"].description or "").lower()
+    assert "substring" in (by_name["search_tags"].description or "").lower()
     hedge_description = (by_name["hedge"].description or "").lower()
     assert "ticker" in hedge_description
     assert "search_markets" in hedge_description
@@ -179,6 +219,29 @@ async def test_search_markets_forwards_query() -> None:
     page = MarketPage.model_validate(result.structured_content)
     assert page.items[0].score == pytest.approx(0.9)
     assert page.next_cursor is None
+
+
+@pytest.mark.asyncio
+async def test_list_categories_forwards() -> None:
+    api = FakeApiClient()
+    api.categories_result = VocabList(items=["Economics", "Politics"])
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        result = await client.call_tool("list_categories", {})
+    assert api.list_categories_calls == 1
+    assert VocabList.model_validate(result.structured_content).items == ["Economics", "Politics"]
+
+
+@pytest.mark.asyncio
+async def test_search_tags_forwards_query() -> None:
+    api = FakeApiClient()
+    api.tags_result = VocabList(items=["fed", "federal-reserve"])
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        result = await client.call_tool("search_tags", {"params": {"q": "fed", "limit": 2}})
+    assert api.search_tags_calls[0].q == "fed"
+    assert api.search_tags_calls[0].limit == 2
+    assert VocabList.model_validate(result.structured_content).items == ["fed", "federal-reserve"]
 
 
 @pytest.mark.asyncio
