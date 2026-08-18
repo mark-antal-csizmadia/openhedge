@@ -16,6 +16,7 @@ Walk the user through connecting MCP, then run one example hedge. Do not place t
 - [ ] MCP serving (`curl -sS http://localhost:8001/ready`)
 - [ ] `.cursor/mcp.json` present (create if missing)
 - [ ] User confirmed a green `openhedge` server in Cursor Settings
+- [ ] Markets collection point count (scripts/count_markets.sh)
 - [ ] User picked an example prompt
 - [ ] Ran via MCP `hedge_risk` (or search → get_market → hedge → present_hedge)
 ```
@@ -43,6 +44,16 @@ If missing, create [`.cursor/mcp.json`](../../../.cursor/mcp.json):
 Do not add a `type` field. Ask the user to reload MCP and confirm `openhedge` is green.
 
 Use MCP tools `search_markets`, `get_market`, `hedge`, and `present_hedge`. Prefer the MCP `hedge_risk` prompt. State basis risk. If none fits, call `present_hedge` with `verdict=none`.
+
+## Markets in Qdrant
+
+From the repo root:
+
+```bash
+bash .agents/skills/try-hedging-examples/scripts/count_markets.sh
+```
+
+Report the count. There should be tens of thousands of markets for a meaningful search and hedging discovery. If the count is below 10,000 (empty or still filling via `sync_markets`), tell the user they can wait for ingest, or run now with degraded hedging opportunities. Do not block; proceed if they choose to run now.
 
 ## Example prompts
 
