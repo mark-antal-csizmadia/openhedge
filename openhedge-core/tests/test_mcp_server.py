@@ -6,7 +6,7 @@ import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from openhedge_core.api_client import OpenhedgeApiError
-from openhedge_core.hedge import HEDGE_MATH_MARKDOWN, HedgeCandidate
+from openhedge_core.hedge import HEDGE_MATH_MARKDOWN, HedgeCandidate, HedgeCard, HedgeParams, size_hedge
 from openhedge_core.mcp_server import INSTRUCTIONS, create_mcp
 from openhedge_core.server import (
     MarketListParams,
@@ -133,6 +133,7 @@ async def test_list_tools_documents_api_surface() -> None:
     by_name = {tool.name: tool for tool in tools}
     assert set(by_name) == {
         "hedge",
+        "present_hedge",
         "browse_markets",
         "search_markets",
         "get_market",
@@ -142,6 +143,7 @@ async def test_list_tools_documents_api_surface() -> None:
     }
     titles = {tool.name: tool.title for tool in tools}
     assert titles["hedge"] == "Hedge a risk"
+    assert titles["present_hedge"] == "Present a hedge card"
     assert titles["browse_markets"] == "Browse markets"
     assert titles["search_markets"] == "Search markets"
     assert titles["get_market"] == "Get a market"
@@ -200,6 +202,17 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "ticker" in _schema_text(hedge_schema)
     assert "estimated_hit_dollars" in _schema_text(hedge_schema)
     assert "risk" not in _schema_text(hedge_schema)
+    present_schema = by_name["present_hedge"].inputSchema
+    present_props = _param_properties(present_schema)
+    assert "verdict" in present_props
+    assert "headline" in present_props
+    assert "basis_risk" in present_props
+    assert "candidate" in present_props
+    assert "params" not in (present_schema.get("properties") or {})
+    present_description = (by_name["present_hedge"].description or "").lower()
+    assert "markdown" in present_description
+    assert "unmodified" in present_description
+    assert "present_hedge" in INSTRUCTIONS
     assert "natural-language" in (by_name["search_markets"].description or "").lower()
     assert "strike_order" in (by_name["get_event"].description or "")
     get_event_description = (by_name["get_event"].description or "").lower()
@@ -474,6 +487,12 @@ async def test_hedge_fetches_ticker_and_sizes() -> None:
     assert candidate.side == "yes"
     assert candidate.contracts == pytest.approx(100.0)
     assert candidate.premium_dollars == pytest.approx(40.0)
+    assert candidate.estimated_hit_dollars == pytest.approx(100.0)
+    assert candidate.coverage == pytest.approx(1.0)
+    assert candidate.target_payout_dollars == pytest.approx(100.0)
+    assert candidate.unconstrained_contracts == pytest.approx(100.0)
+    assert candidate.coverage_achieved == pytest.approx(1.0)
+    assert candidate.liquidity_constrained is False
 
 
 @pytest.mark.asyncio
@@ -484,6 +503,111 @@ async def test_hedge_missing_ticker_is_tool_error() -> None:
     async with Client(mcp) as client:
         with pytest.raises(ToolError, match=r"404: market not found"):
             await client.call_tool("hedge", {"ticker": "MISSING"})
+
+
+@pytest.mark.asyncio
+async def test_present_hedge_fit_formats_candidate() -> None:
+    market = _market(ticker="MKT-0", yes_ask_size=10.0)
+    candidate = size_hedge(
+        market,
+        HedgeParams(ticker=market.ticker, estimated_hit_dollars=100.0, coverage=1.0, side="yes"),
+    )
+    mcp = create_mcp(api_client=FakeApiClient())
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "present_hedge",
+            {
+                "verdict": "fit",
+                "headline": "Diesel above $5 could cost this business $100.",
+                "basis_risk": "The closest market follows crude rather than diesel.",
+                "candidate": candidate.model_dump(mode="json"),
+            },
+        )
+    payload = result.structured_content
+    assert payload is not None
+    card = HedgeCard.model_validate(payload)
+    assert card.verdict == "fit"
+    assert card.candidate is not None
+    assert card.candidate.liquidity_constrained is True
+    markdown = card.markdown
+    assert "You pay up front: $4.00" in markdown
+    assert "Market pays gross: $10.00" in markdown
+    assert "Net: $86.00" in markdown
+    assert "Liquidity constrained:" in markdown
+    assert market.url in markdown
+
+
+@pytest.mark.asyncio
+async def test_present_hedge_unconstrained_omits_liquidity_sentence() -> None:
+    market = _market(ticker="MKT-0", yes_ask_size=1000.0)
+    candidate = size_hedge(
+        market,
+        HedgeParams(ticker=market.ticker, estimated_hit_dollars=100.0, coverage=1.0, side="yes"),
+    )
+    mcp = create_mcp(api_client=FakeApiClient())
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "present_hedge",
+            {
+                "verdict": "fit",
+                "headline": "Headline",
+                "basis_risk": "Basis",
+                "candidate": candidate.model_dump(mode="json"),
+            },
+        )
+    card = HedgeCard.model_validate(result.structured_content)
+    assert "You pay up front: $40.00" in card.markdown
+    assert "Liquidity constrained" not in card.markdown
+
+
+@pytest.mark.asyncio
+async def test_present_hedge_none_omits_dollars() -> None:
+    mcp = create_mcp(api_client=FakeApiClient())
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "present_hedge",
+            {
+                "verdict": "none",
+                "headline": "No cruise-weekend contract.",
+                "basis_risk": "No listed market covers this shop's weekend sales.",
+            },
+        )
+    card = HedgeCard.model_validate(result.structured_content)
+    assert card.candidate is None
+    assert "No current market fits this exposure." in card.markdown
+    assert "You pay up front" not in card.markdown
+    assert "$" not in card.markdown
+
+
+@pytest.mark.asyncio
+async def test_present_hedge_fit_without_candidate_is_tool_error() -> None:
+    mcp = create_mcp(api_client=FakeApiClient())
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match="verdict=fit requires candidate"):
+            await client.call_tool(
+                "present_hedge",
+                {"verdict": "fit", "headline": "Headline", "basis_risk": "Basis"},
+            )
+
+
+@pytest.mark.asyncio
+async def test_present_hedge_none_with_candidate_is_tool_error() -> None:
+    candidate = size_hedge(
+        _market(ticker="MKT-0"),
+        HedgeParams(ticker="MKT-0", estimated_hit_dollars=100.0, side="yes"),
+    )
+    mcp = create_mcp(api_client=FakeApiClient())
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match="verdict=none rejects candidate"):
+            await client.call_tool(
+                "present_hedge",
+                {
+                    "verdict": "none",
+                    "headline": "Headline",
+                    "basis_risk": "Basis",
+                    "candidate": candidate.model_dump(mode="json"),
+                },
+            )
 
 
 @pytest.mark.asyncio
@@ -504,12 +628,16 @@ async def test_list_prompts_and_resources() -> None:
     assert "search_markets" in prompt_text.lower()
     assert "get_market" in prompt_text.lower()
     assert "none fits" in prompt_text.lower()
+    assert "present_hedge" in prompt_text.lower()
+    assert "markdown" in prompt_text.lower()
     assert "hedge" in prompt_text.lower()
     resource_text = "".join(block.text for block in resource)
     assert resource_text == HEDGE_MATH_MARKDOWN
     assert "does not ingest scalar" in resource_text
     assert "top of that book only" in resource_text
     assert "ignores fees" in resource_text
+    assert "coverage_achieved" in resource_text
+    assert "present_hedge" in resource_text
 
 
 @pytest.mark.asyncio

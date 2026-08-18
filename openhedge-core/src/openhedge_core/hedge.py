@@ -1,12 +1,15 @@
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from jinja2 import Environment, PackageLoader
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from openhedge_core.types.market import PRICE_DECIMALS, Market
 
 HedgeSide = Literal["yes", "no"]
+HedgeVerdict = Literal["fit", "none"]
 
 CONTRACT_PRECISION = 2
+COVERAGE_ACHIEVED_DECIMALS = 4
 UNIT_PAYOUT_DOLLARS = 1.0
 
 HEDGE_MATH_MARKDOWN = """\
@@ -53,6 +56,12 @@ If `estimated_hit_dollars` is set:
 - `net_if_pays = estimated_hit_dollars - gross_payout - premium`
 - `net_if_expires = -premium`
 
+The candidate echoes `estimated_hit_dollars`, requested `coverage`, `target_payout_dollars`
+(unconstrained gross target), and `unconstrained_contracts` (that target before the book
+cap). `coverage_achieved` is `gross_payout_dollars / estimated_hit_dollars` when a hit was
+given (null for unit economics). It is payout versus modeled loss, not versus requested
+`coverage`. Read target versus filled size from those fields; do not reconstruct them.
+
 Each call is sized independently against the full hit. Overlapping contracts (same event,
 several strikes) can overstate coverage.
 
@@ -75,8 +84,18 @@ exposure window. Prefer an honest gap over a forced proxy. Basis risk (for examp
 hedging diesel with a crude-oil strike) must be stated explicitly. Do not call `hedge`
 until the set is worth sizing.
 
+`present_hedge` is the last step. When none fits, call it with `verdict=none` and no
+candidate; do not call `hedge`. When a ticker is kept, call `hedge` then `present_hedge`
+with that payload unmodified as `candidate`. Paste `markdown` as the user reply; do not
+restate dollars in different figures.
+
 openhedge does not place orders. Send the user to `url` on the source venue.
 """
+
+_HEDGE_CARD_TEMPLATE = Environment(
+    loader=PackageLoader("openhedge_core", "templates"),
+    autoescape=False,
+).get_template("hedge_card.j2")
 
 
 class HedgeParams(BaseModel):
@@ -132,6 +151,31 @@ class HedgeCandidate(BaseModel):
     gross_payout_dollars: float = Field(
         description="Gross settlement if `side` wins: contracts times $1.",
     )
+    estimated_hit_dollars: float | None = Field(
+        default=None,
+        description="Modeled dollar loss passed to hedge. Null for unit economics.",
+    )
+    coverage: float = Field(
+        description=(
+            "Requested fraction of estimated_hit_dollars targeted as gross payout. "
+            "Ignored for the target when no hit was given."
+        ),
+    )
+    target_payout_dollars: float = Field(
+        description=(
+            "Unconstrained gross payout target: estimated_hit_dollars times coverage, or $1 when no hit was given."
+        ),
+    )
+    unconstrained_contracts: float = Field(
+        description="Contract count implied by target_payout_dollars before the book cap.",
+    )
+    coverage_achieved: float | None = Field(
+        default=None,
+        description=(
+            "gross_payout_dollars divided by estimated_hit_dollars. Null when no dollar "
+            "hit was given. This is payout versus modeled loss, not versus requested coverage."
+        ),
+    )
     net_if_pays: float | None = Field(
         default=None,
         description=(
@@ -151,6 +195,49 @@ class HedgeCandidate(BaseModel):
     )
 
 
+class HedgeCardParams(BaseModel):
+    """Inputs for formatting a prior hedge result as a user-facing card."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: HedgeVerdict = Field(description="fit when a sized candidate is kept; none when no market maps cleanly.")
+    headline: str = Field(min_length=1, description="Restated user exposure in one line.")
+    basis_risk: str = Field(
+        min_length=1,
+        description="Why this market is a proxy (or why none fits). Do not put dollar figures here.",
+    )
+    other_exposures: list[str] = Field(
+        default_factory=list,
+        description="Optional related risks noticed but not sized on this card.",
+    )
+    candidate: HedgeCandidate | None = Field(
+        default=None,
+        description="Unmodified hedge tool result. Required for fit; omit for none.",
+    )
+
+    @model_validator(mode="after")
+    def _verdict_matches_candidate(self) -> Self:
+        if self.verdict == "fit" and self.candidate is None:
+            raise ValueError("verdict=fit requires candidate")
+        if self.verdict == "none" and self.candidate is not None:
+            raise ValueError("verdict=none rejects candidate")
+        return self
+
+
+class HedgeCard(BaseModel):
+    """Blanket-style hedge card: agent narrative plus server-owned dollars."""
+
+    verdict: HedgeVerdict = Field(description="fit or none.")
+    headline: str = Field(description="Restated user exposure in one line.")
+    basis_risk: str = Field(description="Why this market is a proxy, or why none fits.")
+    other_exposures: list[str] = Field(description="Related risks noticed but not sized on this card.")
+    candidate: HedgeCandidate | None = Field(
+        default=None,
+        description="Sized hedge copied from the inbound candidate. Null when verdict is none.",
+    )
+    markdown: str = Field(description="Frozen user reply. Paste this verbatim; do not restate dollars.")
+
+
 def size_hedge(market: Market, params: HedgeParams) -> HedgeCandidate:
     """Size a buy of `params.side` on `market` from top-of-book ask and optional dollar hit."""
     price, available_size = _ask_for_side(market, params.side)
@@ -163,9 +250,11 @@ def size_hedge(market: Market, params: HedgeParams) -> HedgeCandidate:
     gross_payout = round(contracts * UNIT_PAYOUT_DOLLARS, CONTRACT_PRECISION)
     net_if_pays: float | None = None
     net_if_expires: float | None = None
+    coverage_achieved: float | None = None
     if estimated_hit_dollars is not None:
         net_if_pays = round(estimated_hit_dollars - gross_payout - premium, CONTRACT_PRECISION)
         net_if_expires = round(-premium, CONTRACT_PRECISION)
+        coverage_achieved = round(gross_payout / estimated_hit_dollars, COVERAGE_ACHIEVED_DECIMALS)
     return HedgeCandidate(
         ticker=market.ticker,
         url=market.url,
@@ -176,13 +265,91 @@ def size_hedge(market: Market, params: HedgeParams) -> HedgeCandidate:
         contracts=contracts,
         premium_dollars=premium,
         gross_payout_dollars=gross_payout,
+        estimated_hit_dollars=estimated_hit_dollars,
+        coverage=coverage,
+        target_payout_dollars=round(target_payout, CONTRACT_PRECISION),
+        unconstrained_contracts=unconstrained,
+        coverage_achieved=coverage_achieved,
         net_if_pays=net_if_pays,
         net_if_expires=net_if_expires,
         liquidity_constrained=available_size < unconstrained,
     )
 
 
+def compose_hedge_card(params: HedgeCardParams) -> HedgeCard:
+    """Copy inbound candidate numbers into a frozen markdown card. Does not re-size."""
+    return HedgeCard(
+        verdict=params.verdict,
+        headline=params.headline,
+        basis_risk=params.basis_risk,
+        other_exposures=list(params.other_exposures),
+        candidate=params.candidate,
+        markdown=render_hedge_card(params),
+    )
+
+
+def render_hedge_card(params: HedgeCardParams) -> str:
+    """Render the user-facing hedge card markdown from already-validated params."""
+    candidate = params.candidate
+    context: dict[str, object] = {
+        "verdict": params.verdict,
+        "headline": params.headline,
+        "basis_risk": params.basis_risk,
+        "other_exposures": params.other_exposures,
+        "unit_economics": False,
+        "liquidity_constrained": False,
+    }
+    if candidate is not None:
+        context.update(
+            {
+                "question": candidate.question,
+                "side": candidate.side.upper(),
+                "url": candidate.url,
+                "premium": _format_dollars(candidate.premium_dollars),
+                "gross": _format_dollars(candidate.gross_payout_dollars),
+                "hit": _format_dollars(candidate.estimated_hit_dollars)
+                if candidate.estimated_hit_dollars is not None
+                else None,
+                "hit_signed": _format_dollars(-(candidate.estimated_hit_dollars or 0.0)),
+                "gross_signed": _format_signed_dollars(candidate.gross_payout_dollars),
+                "premium_signed": _format_dollars(-candidate.premium_dollars),
+                "net_if_pays": _format_dollars(candidate.net_if_pays) if candidate.net_if_pays is not None else None,
+                "net_if_expires": _format_dollars(candidate.net_if_expires)
+                if candidate.net_if_expires is not None
+                else None,
+                "unit_economics": candidate.estimated_hit_dollars is None,
+                "liquidity_constrained": candidate.liquidity_constrained,
+                "unconstrained_contracts": _format_count(candidate.unconstrained_contracts),
+                "available_size": _format_count(candidate.available_size),
+                "contracts": _format_count(candidate.contracts),
+                "target": _format_dollars(candidate.target_payout_dollars),
+                "coverage_achieved": _format_coverage(candidate.coverage_achieved),
+            }
+        )
+    return _HEDGE_CARD_TEMPLATE.render(**context).strip()
+
+
 def _ask_for_side(market: Market, side: HedgeSide) -> tuple[float, float]:
     if side == "yes":
         return market.yes_ask_price, market.yes_ask_size
     return 1.0 - market.yes_bid_price, market.yes_bid_size
+
+
+def _format_dollars(value: float) -> str:
+    sign = "-" if value < 0 else ""
+    return f"{sign}${abs(value):,.2f}"
+
+
+def _format_signed_dollars(value: float) -> str:
+    sign = "-" if value < 0 else "+"
+    return f"{sign}${abs(value):,.2f}"
+
+
+def _format_count(value: float) -> str:
+    return f"{value:,.2f}"
+
+
+def _format_coverage(value: float | None) -> str | None:
+    if value is None:
+        return None
+    return f"{value:.{COVERAGE_ACHIEVED_DECIMALS}f}".rstrip("0").rstrip(".")
