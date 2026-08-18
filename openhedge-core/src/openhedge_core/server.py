@@ -102,6 +102,7 @@ def create_app(
             app.state.store = QdrantVectorStore(
                 qdrant,
                 collection=cfg.qdrant.collection,
+                point_id_namespace=cfg.qdrant.point_id_namespace,
             )
             api_key = cfg.openrouter.api_key
             if not api_key:

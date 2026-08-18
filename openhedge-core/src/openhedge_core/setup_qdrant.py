@@ -21,6 +21,7 @@ async def async_main() -> None:
         store = QdrantVectorStore(
             qdrant,
             collection=settings.qdrant.collection,
+            point_id_namespace=settings.qdrant.point_id_namespace,
         )
         await store.setup(vector_size=settings.openrouter.embedding_dim)
     finally:

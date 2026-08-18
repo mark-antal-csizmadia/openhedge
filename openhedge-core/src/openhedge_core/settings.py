@@ -4,9 +4,9 @@ from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from openhedge_core.embeddings import DEFAULT_EMBEDDING_MODEL, EMBEDDING_DIM
-from openhedge_core.vector_store import DEFAULT_QDRANT_COLLECTION, DEFAULT_QDRANT_URL
+from openhedge_core.vector_store import DEFAULT_POINT_ID_NAMESPACE, DEFAULT_QDRANT_COLLECTION, DEFAULT_QDRANT_URL
 
-DEFAULT_OPENROUTER_HTTP_REFERER = "https://openhedge.dev"
+DEFAULT_OPENROUTER_HTTP_REFERER = "https://openhedge.app"
 DEFAULT_OPENROUTER_APP_TITLE = "openhedge"
 
 
@@ -14,6 +14,7 @@ class QdrantSettings(BaseModel):
     url: str = DEFAULT_QDRANT_URL
     api_key: str | None = None
     collection: str = DEFAULT_QDRANT_COLLECTION
+    point_id_namespace: str = DEFAULT_POINT_ID_NAMESPACE
 
 
 class OpenRouterSettings(BaseModel):
