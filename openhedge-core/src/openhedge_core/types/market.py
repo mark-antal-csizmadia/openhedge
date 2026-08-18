@@ -207,24 +207,15 @@ class Event(BaseModel):
     series_ticker: str | None = Field(default=None, description="Series primary key")
     category: str | None = Field(default=None, description="Category of the event")
     markets: list[MarketSummary] = Field(..., description="Markets in the event, ordered by strike_order")
-    truncated: bool = Field(
-        default=False,
-        description="True when markets was capped. Continue with browse_markets using this event_ticker.",
-    )
-    market_count: int = Field(..., description="Total markets in the event before capping")
+    market_count: int = Field(..., description="Number of markets in the event")
 
     @classmethod
-    def from_markets(cls, markets: Sequence[MarketSummary], *, limit: int | None = None) -> "Event":
+    def from_markets(cls, markets: Sequence[MarketSummary]) -> "Event":
         ordered = sorted(
             (MarketSummary.model_validate(market.model_dump()) for market in markets),
             key=lambda market: market.strike_order,
         )
         first = ordered[0]
-        market_count = len(ordered)
-        truncated = False
-        if limit is not None and market_count > limit:
-            ordered = ordered[:limit]
-            truncated = True
         return cls(
             source=first.source,
             event_ticker=first.event_ticker,
@@ -232,6 +223,5 @@ class Event(BaseModel):
             series_ticker=first.series_ticker,
             category=first.category,
             markets=ordered,
-            truncated=truncated,
-            market_count=market_count,
+            market_count=len(ordered),
         )

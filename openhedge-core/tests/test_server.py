@@ -10,7 +10,6 @@ from openhedge_core.server import (
     DEFAULT_PAGE_LIMIT,
     DEFAULT_VOCAB_LIMIT,
     EVENT_SCROLL_PAGE_SIZE,
-    MAX_EVENT_MARKETS,
     MAX_PAGE_LIMIT,
     MAX_VOCAB_LIMIT,
     create_app,
@@ -418,8 +417,8 @@ async def test_get_event_orders_markets_by_strike_order() -> None:
     assert body["event_title"] == "Open event"
     assert [market["ticker"] for market in body["markets"]] == ["MKT-0", "MKT-1", "MKT-2"]
     assert [market["strike_order"] for market in body["markets"]] == [0, 1, 2]
-    assert body["truncated"] is False
     assert body["market_count"] == 3
+    assert "truncated" not in body
     assert "tags" not in body
     for market in body["markets"]:
         _assert_compact_market(market)
@@ -433,9 +432,9 @@ async def test_get_event_orders_markets_by_strike_order() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_event_caps_markets_and_sets_truncated() -> None:
+async def test_get_event_returns_all_markets() -> None:
     store = FakeSearchStore()
-    total = MAX_EVENT_MARKETS + 1
+    total = 51
     markets = [
         _market(ticker=f"MKT-{strike_order}", strike_order=strike_order, event_ticker="EVT-OPEN")
         for strike_order in range(total - 1, -1, -1)
@@ -445,10 +444,10 @@ async def test_get_event_caps_markets_and_sets_truncated() -> None:
         response = await client.get("/v1/events/EVT-OPEN")
     assert response.status_code == 200
     body = response.json()
-    assert body["truncated"] is True
+    assert "truncated" not in body
     assert body["market_count"] == total
-    assert [market["ticker"] for market in body["markets"]] == [f"MKT-{i}" for i in range(MAX_EVENT_MARKETS)]
-    assert [market["strike_order"] for market in body["markets"]] == list(range(MAX_EVENT_MARKETS))
+    assert [market["ticker"] for market in body["markets"]] == [f"MKT-{i}" for i in range(total)]
+    assert [market["strike_order"] for market in body["markets"]] == list(range(total))
     for market in body["markets"]:
         _assert_compact_market(market)
     assert store.scroll_calls[0]["limit"] == EVENT_SCROLL_PAGE_SIZE

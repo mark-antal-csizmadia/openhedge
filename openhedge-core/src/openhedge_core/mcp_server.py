@@ -39,11 +39,9 @@ Workflow:
    question, outcomes, prices/sizes, end_datetime, and url — not resolution rules.
    All returned markets are open. Judge relevance from those fields; drop poor proxies.
    Use list_categories and list_tags for the most popular filter values, not a complete catalog.
-2. Use get_event when a strike ladder might fit. Compare question, yes_outcome/no_outcome,
-   and strike_order. get_event is capped; if truncated is true, continue with browse_markets
-   using event_ticker=[that ticker] and follow next_cursor. Browse is not strike-ordered and
-   may overlap the returned slice — dedupe by ticker, then compare strike_order. Call
-   get_market on shortlisted tickers and read description (resolution rules); drop poor
+2. Use get_event when a strike ladder might fit. It returns all markets for that event,
+   ordered by strike_order. Compare question, yes_outcome/no_outcome, and strike_order.
+   Call get_market on shortlisted tickers and read description (resolution rules); drop poor
    proxies. If none map cleanly, say none fits.
 3. Use hedge only after you have chosen tickers and read their rules via get_market. Call
    hedge once per kept ticker with that ticker, side, and optional estimated_hit_dollars.
@@ -59,10 +57,8 @@ Pagination: browse_markets uses cursor pagination. If a page includes next_curso
 cursor for the next page. browse_markets page size defaults to 8 (maximum 20). search_markets
 returns a single page; refine q or add filters instead of paging. list_categories and list_tags
 return a single capped list of the most popular values, ordered by frequency. If truncated is true,
-raise limit (maximum 100); do not page, and do not expect rare tags. get_event returns at most 50
-markets ordered by strike_order. If truncated is true, continue with browse_markets using
-event_ticker=[that ticker] and follow next_cursor. Browse is not strike-ordered and may overlap the
-returned slice; dedupe by ticker, then compare strike_order.
+raise limit (maximum 100); do not page, and do not expect rare tags. get_event returns all markets
+for the event, ordered by strike_order.
 Prices are in dollars in [0, 1]. yes_ask_price is the best YES sell offer; yes_bid_price is the best YES buy offer. A YES ask plus the corresponding NO bid equals 1.0. Compact hits include yes_ask_size and yes_bid_size.
 Keyword filters are lists (OR within a field). Pass tags_mode=all to require every tag.
 Range filters are inclusive.
@@ -226,21 +222,18 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
             Field(description="Event primary key, typically event_ticker from a market record."),
         ],
     ) -> Event:
-        """Fetch an event and its markets, ordered by strike_order and capped.
+        """Fetch an event and all of its markets, ordered by strike_order.
 
         Use when comparing related contracts in the same event (for example a ladder of strikes).
         Markets are compact (question, outcomes, prices/sizes, strike_order); call get_market
-        for resolution rules on shortlisted tickers. At most 50 markets are returned. If
-        truncated is true, continue with browse_markets using event_ticker=[that ticker] and
-        follow next_cursor. Browse is not strike-ordered and may overlap the returned slice;
-        dedupe by ticker, then compare strike_order.
+        for resolution rules on shortlisted tickers.
 
         Args:
             event_ticker: Event primary key, typically `event_ticker` from a market record.
 
         Returns:
-            The event with compact `markets` sorted by `strike_order`. `market_count` is the
-            total before capping. If `truncated` is true, more markets exist.
+            The event with all compact `markets` sorted by `strike_order`. `market_count` is
+            the number of markets in the event.
 
         Raises:
             ToolError: If no markets exist for `event_ticker` (upstream 404).
@@ -292,8 +285,7 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
             f"The user wants to hedge this exposure:\n\n{risk}\n\n"
             "1. Discover markets with search_markets (try several queries or add filters). "
             "Use browse_markets for structured filters. If a strike ladder might fit, call "
-            "get_event and compare markets by strike_order. Those results are compact and "
-            "capped; if truncated, continue with browse_markets using event_ticker.\n"
+            "get_event and compare all markets by strike_order.\n"
             "2. Call get_market on shortlisted tickers. Read question, yes_outcome/no_outcome, "
             "and description (resolution rules). Keep only clean proxies. State basis risk "
             "explicitly. Do not force a match; if none fits, stop and say so. Do not call "
