@@ -1,5 +1,4 @@
 import logging
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any, Literal
@@ -10,23 +9,12 @@ from openrouter import OpenRouter
 from pydantic import BaseModel, Field, ValidationError
 from qdrant_client import AsyncQdrantClient
 
-from openhedge_core.embeddings import (
-    DEFAULT_EMBEDDING_MODEL,
-    EMBEDDING_DIM,
-    EmbeddingClient,
-    OpenRouterEmbeddingClient,
-)
+from openhedge_core.embeddings import EmbeddingClient, OpenRouterEmbeddingClient
 from openhedge_core.filters import MarketFilters, to_qdrant_filter
+from openhedge_core.settings import ServerSettings
 from openhedge_core.types.market import MARKET_SUMMARY_PAYLOAD_FIELDS, Event, Market, MarketSummary
-from openhedge_core.vector_store import (
-    DEFAULT_QDRANT_COLLECTION,
-    DEFAULT_QDRANT_URL,
-    QdrantVectorStore,
-    VectorStore,
-)
+from openhedge_core.vector_store import QdrantVectorStore, VectorStore
 
-DEFAULT_OPENROUTER_HTTP_REFERER = "https://openhedge.dev"
-DEFAULT_OPENROUTER_APP_TITLE = "openhedge"
 DEFAULT_PAGE_LIMIT = 8
 MAX_PAGE_LIMIT = 20
 DEFAULT_SEARCH_LIMIT = 8
@@ -93,39 +81,43 @@ class ReadyStatus(BaseModel):
     embedder: str
 
 
-def create_app(*, store: VectorStore | None = None, embedder: EmbeddingClient | None = None) -> FastAPI:
+def create_app(
+    *,
+    store: VectorStore | None = None,
+    embedder: EmbeddingClient | None = None,
+    settings: ServerSettings | None = None,
+) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if store is not None:
             yield
             return
 
+        cfg = settings if settings is not None else ServerSettings()
         qdrant = AsyncQdrantClient(
-            url=os.environ.get("QDRANT_URL", DEFAULT_QDRANT_URL),
-            api_key=os.environ.get("QDRANT_API_KEY") or None,
+            url=cfg.qdrant.url,
+            api_key=cfg.qdrant.api_key,
         )
         try:
             app.state.store = QdrantVectorStore(
                 qdrant,
-                collection=os.environ.get("QDRANT_COLLECTION", DEFAULT_QDRANT_COLLECTION),
+                collection=cfg.qdrant.collection,
             )
-            api_key = os.environ.get("OPENROUTER_API_KEY")
+            api_key = cfg.openrouter.api_key
             if not api_key:
                 logger.warning("OPENROUTER_API_KEY is not set; /v1/search will return 503")
                 app.state.embedder = None
                 yield
                 return
-            model = os.environ.get("OPENROUTER_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
-            dimensions = int(os.environ.get("OPENROUTER_EMBEDDING_DIM", str(EMBEDDING_DIM)))
             async with OpenRouter(
                 api_key=api_key,
-                http_referer=DEFAULT_OPENROUTER_HTTP_REFERER,
-                x_open_router_title=DEFAULT_OPENROUTER_APP_TITLE,
+                http_referer=cfg.openrouter.http_referer,
+                x_open_router_title=cfg.openrouter.app_title,
             ) as openrouter_client:
                 app.state.embedder = OpenRouterEmbeddingClient(
                     openrouter_client,
-                    model=model,
-                    dimensions=dimensions,
+                    model=cfg.openrouter.embedding_model,
+                    dimensions=cfg.openrouter.embedding_dim,
                 )
                 yield
         finally:
@@ -283,10 +275,11 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    settings = ServerSettings()
     uvicorn.run(
-        app,
-        host=os.environ.get("API_HOST", "127.0.0.1"),
-        port=int(os.environ.get("API_PORT", "8000")),
+        create_app(settings=settings),
+        host=settings.host,
+        port=settings.port,
     )
 
 

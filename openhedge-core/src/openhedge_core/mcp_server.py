@@ -1,5 +1,4 @@
 import logging
-import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal, TypeVar
@@ -34,13 +33,10 @@ from openhedge_core.server import (
     VocabList,
     VocabListParams,
 )
+from openhedge_core.settings import McpServerSettings
 from openhedge_core.types.market import Event, Market
 
 T = TypeVar("T")
-
-DEFAULT_OPENHEDGE_API_URL = "http://127.0.0.1:8000"
-DEFAULT_MCP_HOST = "127.0.0.1"
-DEFAULT_MCP_PORT = 8001
 
 logger = logging.getLogger(__name__)
 
@@ -504,14 +500,14 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    base_url = os.environ.get("OPENHEDGE_API_URL", DEFAULT_OPENHEDGE_API_URL)
-    api_client = OpenhedgeApiClient.from_base_url(base_url)
+    settings = McpServerSettings()
+    api_client = OpenhedgeApiClient.from_base_url(settings.api_url)
     mcp = create_mcp(api_client=api_client, close_client=True)
-    logger.info("MCP proxying %s", base_url)
+    logger.info("MCP proxying %s", settings.api_url)
     mcp.run(
         transport="http",
-        host=os.environ.get("MCP_HOST", DEFAULT_MCP_HOST),
-        port=int(os.environ.get("MCP_PORT", str(DEFAULT_MCP_PORT))),
+        host=settings.host,
+        port=settings.port,
         path="/mcp",
         stateless_http=True,
     )

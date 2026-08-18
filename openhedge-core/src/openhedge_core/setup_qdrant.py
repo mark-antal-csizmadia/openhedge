@@ -1,11 +1,10 @@
 import asyncio
 import logging
-import os
 
 from qdrant_client import AsyncQdrantClient
 
-from openhedge_core.embeddings import EMBEDDING_DIM
-from openhedge_core.vector_store import DEFAULT_QDRANT_COLLECTION, DEFAULT_QDRANT_URL, QdrantVectorStore
+from openhedge_core.settings import SetupQdrantSettings
+from openhedge_core.vector_store import QdrantVectorStore
 
 
 async def async_main() -> None:
@@ -13,17 +12,17 @@ async def async_main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    dimensions = int(os.environ.get("OPENROUTER_EMBEDDING_DIM", str(EMBEDDING_DIM)))
+    settings = SetupQdrantSettings()
     qdrant = AsyncQdrantClient(
-        url=os.environ.get("QDRANT_URL", DEFAULT_QDRANT_URL),
-        api_key=os.environ.get("QDRANT_API_KEY") or None,
+        url=settings.qdrant.url,
+        api_key=settings.qdrant.api_key,
     )
     try:
         store = QdrantVectorStore(
             qdrant,
-            collection=os.environ.get("QDRANT_COLLECTION", DEFAULT_QDRANT_COLLECTION),
+            collection=settings.qdrant.collection,
         )
-        await store.setup(vector_size=dimensions)
+        await store.setup(vector_size=settings.openrouter.embedding_dim)
     finally:
         await qdrant.close()
 
