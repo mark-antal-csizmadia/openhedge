@@ -2,18 +2,28 @@ import logging
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Annotated, TypeVar
+from typing import Annotated, Literal, TypeVar
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from openhedge_core.api_client import MarketApi, OpenhedgeApiClient, OpenhedgeApiError
 from openhedge_core.hedge import HEDGE_MATH_MARKDOWN, HedgeCandidate, HedgeParams, HedgeSide, size_hedge
-from openhedge_core.server import MarketListParams, MarketPage, MarketSearchParams, VocabList, VocabListParams
+from openhedge_core.server import (
+    DEFAULT_PAGE_LIMIT,
+    DEFAULT_SEARCH_LIMIT,
+    MAX_PAGE_LIMIT,
+    MAX_SEARCH_LIMIT,
+    MarketListParams,
+    MarketPage,
+    MarketSearchParams,
+    VocabList,
+    VocabListParams,
+)
 from openhedge_core.types.market import Event, Market
 
 T = TypeVar("T")
@@ -40,6 +50,10 @@ Workflow:
    The catalog is meant to be open markets; check end_datetime. Judge relevance from those
    fields; drop poor proxies.
    Use list_categories and list_tags for the most popular filter values, not a complete catalog.
+   search_markets and browse_markets accept category, tags, tags_mode, end_datetime_gte/lte, and
+   yes_ask_price_gte/lte. browse_markets also accepts event_ticker. Use get_market or get_event
+   for tickers. Judge liquidity from compact hit sizes and hedge.liquidity_constrained; do not
+   filter by size or volume.
 2. Use get_event when a strike ladder might fit. It returns all markets for that event,
    ordered by strike_order. Compare question, yes_outcome/no_outcome, and strike_order.
    Call get_market on shortlisted tickers and read description (resolution rules); drop poor
@@ -65,6 +79,70 @@ Keyword filters are lists (OR within a field). Pass tags_mode=all to require eve
 Range filters are inclusive.
 search_markets requires embeddings on the upstream API and fails if they are not configured.
 """
+
+
+class McpDiscoveryFilters(BaseModel):
+    """Hedge-oriented subset of REST MarketFilters for MCP browse and search."""
+
+    model_config = ConfigDict(extra="forbid")
+    category: list[str] | None = Field(
+        default=None,
+        description="Market categories to include (for example Politics). Multiple values are OR'd.",
+    )
+    tags: list[str] | None = Field(
+        default=None,
+        description="Tags to include. Combined with `tags_mode` (default OR).",
+    )
+    tags_mode: Literal["any", "all"] = Field(
+        default="any",
+        description="How multiple tags are combined. `any` ORs them; `all` requires every tag.",
+    )
+    end_datetime_gte: AwareDatetime | None = Field(
+        default=None,
+        description="Inclusive lower bound on market end datetime (timezone-aware ISO-8601).",
+    )
+    end_datetime_lte: AwareDatetime | None = Field(
+        default=None,
+        description="Inclusive upper bound on market end datetime (timezone-aware ISO-8601).",
+    )
+    yes_ask_price_gte: float | None = Field(
+        default=None,
+        description="Inclusive lower bound on the best YES ask price in dollars. Prices are in [0, 1]; a YES ask plus the corresponding NO bid equals 1.0.",
+    )
+    yes_ask_price_lte: float | None = Field(
+        default=None,
+        description="Inclusive upper bound on the best YES ask price in dollars. Prices are in [0, 1]; a YES ask plus the corresponding NO bid equals 1.0.",
+    )
+
+
+class McpBrowseParams(McpDiscoveryFilters):
+    event_ticker: list[str] | None = Field(
+        default=None,
+        description="Event tickers to include. Multiple values are OR'd.",
+    )
+    limit: int = Field(
+        default=DEFAULT_PAGE_LIMIT,
+        ge=1,
+        le=MAX_PAGE_LIMIT,
+        description="Page size. Defaults to 8, maximum 20.",
+    )
+    cursor: str | None = Field(
+        default=None,
+        description="Pagination cursor from the previous page's next_cursor. Omit for the first page.",
+    )
+
+
+class McpSearchParams(McpDiscoveryFilters):
+    q: str = Field(
+        min_length=1,
+        description="Natural-language query embedded and matched against markets.",
+    )
+    limit: int = Field(
+        default=DEFAULT_SEARCH_LIMIT,
+        ge=1,
+        le=MAX_SEARCH_LIMIT,
+        description="Number of nearest neighbors to return. Defaults to 8, maximum 20.",
+    )
 
 
 def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
@@ -149,42 +227,52 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         return size_hedge(market, params)
 
     @mcp.tool(title="Browse markets", annotations=_READ_ONLY_TOOL)
-    async def browse_markets(params: MarketListParams) -> MarketPage:
+    async def browse_markets(params: McpBrowseParams) -> MarketPage:
         """Browse markets with structured filters and cursor pagination.
 
-        Use this when the user already knows filters such as category, tags, tickers, or price
-        ranges, and does not need semantic search. Results are not ranked by relevance. Hits are
-        compact (question, outcomes, prices/sizes, end_datetime, url); call get_market for
-        resolution rules. The catalog is meant to be open markets; check end_datetime.
+        Use this when the user already knows filters such as category, tags, event_ticker,
+        end_datetime, or YES ask price, and does not need semantic search. Results are not
+        ranked by relevance. Hits are compact (question, outcomes, prices/sizes, end_datetime,
+        url); call get_market for resolution rules. The catalog is meant to be open markets;
+        check end_datetime.
 
         Args:
-            params: Filters plus page size (default 8, maximum 20) and optional cursor. Keyword
-                list filters are OR'd within a field; pass `tags_mode=all` to require every tag.
-                Range filters (`*_gte` / `*_lte`) are inclusive. Pass `next_cursor` from the
-                previous page as `cursor`. Omit `cursor` for the first page.
+            params: Filters plus page size (default 8, maximum 20) and optional cursor. Allowed
+                filters: category, tags, tags_mode, event_ticker, end_datetime_gte/lte,
+                yes_ask_price_gte/lte. Keyword list filters are OR'd within a field; pass
+                `tags_mode=all` to require every tag. Range filters (`*_gte` / `*_lte`) are
+                inclusive. Pass `next_cursor` from the previous page as `cursor`. Omit `cursor`
+                for the first page. Use get_market or get_event for tickers; judge liquidity
+                from hit sizes and hedge.liquidity_constrained.
 
         Returns:
             A page of compact market hits (`items`, `next_cursor`, `limit`). Follow `next_cursor`
             until it is null.
         """
-        return await _call_api(api_client.browse_markets, params)
+        return await _call_api(
+            api_client.browse_markets,
+            MarketListParams.model_validate(params.model_dump()),
+        )
 
     @mcp.tool(title="Search markets", annotations=_READ_ONLY_TOOL)
-    async def search_markets(params: MarketSearchParams) -> MarketPage:
+    async def search_markets(params: McpSearchParams) -> MarketPage:
         """Semantically search markets for hedges matching a natural-language query.
 
         Prefer this over browse_markets when the user describes an exposure, event, or topic
         in prose. Hits are compact (question, outcomes, prices/sizes, end_datetime, url). Call
         get_market for resolution rules before keeping a proxy, then hedge with those tickers.
         The upstream API embeds `q` and returns nearest neighbors. Optional filters restrict
-        the candidate set. The catalog is meant to be open markets; check end_datetime. Judge
-        relevance from question, outcomes, prices, and end_datetime; drop poor proxies. This
-        is a single page; refine `q` or add filters rather than paging.
+        the candidate set: category, tags, tags_mode, end_datetime_gte/lte, yes_ask_price_gte/lte.
+        The catalog is meant to be open markets; check end_datetime. Judge relevance from
+        question, outcomes, prices, and end_datetime; drop poor proxies. This is a single page;
+        refine `q` or add filters rather than paging.
 
         Args:
             params: Required `q` plus optional filters and `limit` (default 8, maximum 20).
                 Keyword list filters are OR'd within a field; pass `tags_mode=all` to require
-                every tag. Do not page; refine `q` or add filters for more results.
+                every tag. Do not page; refine `q` or add filters for more results. Use
+                get_market or get_event for tickers; judge liquidity from hit sizes and
+                hedge.liquidity_constrained.
 
         Returns:
             Compact market hits, nearest neighbors first. A single page; `next_cursor` is
@@ -193,7 +281,10 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         Raises:
             ToolError: If embeddings are not configured (upstream 503) or `q` is empty (422).
         """
-        return await _call_api(api_client.search_markets, params)
+        return await _call_api(
+            api_client.search_markets,
+            MarketSearchParams.model_validate(params.model_dump()),
+        )
 
     @mcp.tool(title="Get a market", annotations=_READ_ONLY_TOOL)
     async def get_market(
