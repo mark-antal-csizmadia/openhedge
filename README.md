@@ -37,7 +37,7 @@ pre-commit run --all-files
 docker compose up
 ```
 
-- REST API: `http://localhost:8000`
+- REST API: `http://localhost:8000/v1`
 - MCP (Streamable HTTP): `http://localhost:8001/mcp`
 
 Example MCP client config:

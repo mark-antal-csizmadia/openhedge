@@ -49,22 +49,22 @@ class OpenhedgeApiClient:
         return await self._get("/ready", ReadyStatus)
 
     async def browse_markets(self, params: MarketListParams) -> MarketPage:
-        return await self._get("/markets", MarketPage, params=params)
+        return await self._get("/v1/markets", MarketPage, params=params)
 
     async def search_markets(self, params: MarketSearchParams) -> MarketPage:
-        return await self._post("/search", MarketPage, params=params)
+        return await self._post("/v1/search", MarketPage, params=params)
 
     async def get_market(self, ticker: str) -> Market:
-        return await self._get(f"/markets/{ticker}", Market)
+        return await self._get(f"/v1/markets/{ticker}", Market)
 
     async def get_event(self, event_ticker: str) -> Event:
-        return await self._get(f"/events/{event_ticker}", Event)
+        return await self._get(f"/v1/events/{event_ticker}", Event)
 
     async def list_categories(self, params: VocabListParams) -> VocabList:
-        return await self._get("/categories", VocabList, params=params)
+        return await self._get("/v1/categories", VocabList, params=params)
 
     async def list_tags(self, params: VocabListParams) -> VocabList:
-        return await self._get("/tags", VocabList, params=params)
+        return await self._get("/v1/tags", VocabList, params=params)
 
     async def _get(self, path: str, model: type[T], *, params: BaseModel | None = None) -> T:
         query = params.model_dump(mode="json", exclude_none=True) if params is not None else None

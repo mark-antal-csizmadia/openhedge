@@ -100,7 +100,7 @@ async def test_browse_markets_encodes_filters_and_parses_page() -> None:
             ),
         )
 
-    assert captured["path"] == "/markets"
+    assert captured["path"] == "/v1/markets"
     query = parse_qs(captured["query"])
     assert query["category"] == ["Politics"]
     assert query["yes_ask_price_gte"] == ["0.2"]
@@ -128,7 +128,7 @@ async def test_search_markets_sends_query() -> None:
     async with api_client(handler) as client:
         result = await client.search_markets(MarketSearchParams(q="oil prices", limit=2, tags=["fed"]))
 
-    assert captured["path"] == "/search"
+    assert captured["path"] == "/v1/search"
     assert captured["method"] == "POST"
     body = loads(captured["body"])
     assert body["q"] == "oil prices"
@@ -144,7 +144,7 @@ async def test_get_market_parses_payload() -> None:
     market = _market(ticker="MKT-1")
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/markets/MKT-1"
+        assert request.url.path == "/v1/markets/MKT-1"
         return httpx.Response(200, json=market.model_dump(mode="json"))
 
     async with api_client(handler) as client:
@@ -163,7 +163,7 @@ async def test_get_event_parses_payload() -> None:
     event = Event.from_markets(markets)
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/events/EVT-OPEN"
+        assert request.url.path == "/v1/events/EVT-OPEN"
         return httpx.Response(200, json=event.model_dump(mode="json"))
 
     async with api_client(handler) as client:
@@ -217,7 +217,7 @@ async def test_list_categories_encodes_limit_and_parses() -> None:
     async with api_client(handler) as client:
         result = await client.list_categories(VocabListParams())
 
-    assert captured["path"] == "/categories"
+    assert captured["path"] == "/v1/categories"
     query = parse_qs(captured["query"])
     assert query["limit"] == ["20"]
     assert result.items == ["Politics", "Economics"]
@@ -240,7 +240,7 @@ async def test_list_tags_encodes_limit_and_parses() -> None:
     async with api_client(handler) as client:
         result = await client.list_tags(VocabListParams(limit=2))
 
-    assert captured["path"] == "/tags"
+    assert captured["path"] == "/v1/tags"
     query = parse_qs(captured["query"])
     assert "q" not in query
     assert query["limit"] == ["2"]

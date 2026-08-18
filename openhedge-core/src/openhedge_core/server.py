@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Any, Literal
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from openrouter import OpenRouter
 from pydantic import BaseModel, Field, ValidationError
 from qdrant_client import AsyncQdrantClient
@@ -112,7 +112,7 @@ def create_app(*, store: VectorStore | None = None, embedder: EmbeddingClient | 
             )
             api_key = os.environ.get("OPENROUTER_API_KEY")
             if not api_key:
-                logger.warning("OPENROUTER_API_KEY is not set; /search will return 503")
+                logger.warning("OPENROUTER_API_KEY is not set; /v1/search will return 503")
                 app.state.embedder = None
                 yield
                 return
@@ -138,12 +138,14 @@ def create_app(*, store: VectorStore | None = None, embedder: EmbeddingClient | 
         app.state.embedder = embedder
     app.add_api_route("/health", health, methods=["GET"])
     app.add_api_route("/ready", ready, methods=["GET"], response_model=ReadyStatus)
-    app.add_api_route("/markets", browse_markets, methods=["GET"], response_model=MarketPage)
-    app.add_api_route("/markets/{ticker}", get_market, methods=["GET"], response_model=Market)
-    app.add_api_route("/events/{event_ticker}", get_event, methods=["GET"], response_model=Event)
-    app.add_api_route("/search", search_markets, methods=["POST"], response_model=MarketPage)
-    app.add_api_route("/categories", list_categories, methods=["GET"], response_model=VocabList)
-    app.add_api_route("/tags", list_tags, methods=["GET"], response_model=VocabList)
+    v1 = APIRouter(prefix="/v1")
+    v1.add_api_route("/markets", browse_markets, methods=["GET"], response_model=MarketPage)
+    v1.add_api_route("/markets/{ticker}", get_market, methods=["GET"], response_model=Market)
+    v1.add_api_route("/events/{event_ticker}", get_event, methods=["GET"], response_model=Event)
+    v1.add_api_route("/search", search_markets, methods=["POST"], response_model=MarketPage)
+    v1.add_api_route("/categories", list_categories, methods=["GET"], response_model=VocabList)
+    v1.add_api_route("/tags", list_tags, methods=["GET"], response_model=VocabList)
+    app.include_router(v1)
     return app
 
 
