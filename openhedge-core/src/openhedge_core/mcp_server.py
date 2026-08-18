@@ -12,6 +12,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from openhedge_core.api_client import MarketApi, OpenhedgeApiClient, OpenhedgeApiError
+from openhedge_core.hedge import HEDGE_MATH_MARKDOWN, HedgeParams, HedgeResult, size_hedges
 from openhedge_core.server import MAX_SEARCH_OFFSET, MarketListParams, MarketPage, MarketSearchParams
 from openhedge_core.types.market import Event, Market
 
@@ -30,13 +31,21 @@ _READ_ONLY_TOOL = ToolAnnotations(
 )
 
 INSTRUCTIONS = f"""\
-openhedge discovers hedges in event contracts and prediction markets.
+openhedge discovers hedges in event contracts and prediction markets. It does not place orders.
 
 Workflow:
-1. Use search_markets when the user describes an exposure or topic in natural language.
-2. Use browse_markets when the user already has structured filters (category, tags, prices, tickers).
-3. Use get_market once you have a market ticker and need the full record (rules, prices, URL).
-4. Use get_event once you have an event_ticker to see every related market, ordered by strike_order.
+1. Use search_markets (and page / try several queries) when the user describes an exposure in
+   prose. Use browse_markets when they already have structured filters.
+2. Use get_event when a strike ladder might fit. Read question, yes_outcome/no_outcome, and
+   description; drop poor proxies. If none map cleanly, say none fits.
+3. Use hedge only after you have chosen tickers. Pass legs as {{ticker, side}} plus optional
+   estimated_hit_dollars. hedge fetches those markets and sizes a cash-flow hedge; it does not
+   search. Link the user to each candidate's market.url.
+4. Use get_market to inspect one ticker without sizing.
+
+Honesty: search returns nearest neighbors, not guaranteed hedges. State basis risk explicitly.
+Read resource openhedge://docs/hedge-math for settlement, Yes/No complement, and sizing formulas.
+The hedge_risk prompt is the playbook for collecting markets then sizing.
 
 Pagination: if a page includes next_cursor, pass it back as cursor for the next page. Search cursors
 are numeric offsets and cannot exceed {MAX_SEARCH_OFFSET}.
@@ -55,7 +64,32 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
 
     mcp = FastMCP("openhedge", instructions=INSTRUCTIONS, lifespan=lifespan)
 
-    @mcp.tool(annotations=_READ_ONLY_TOOL)
+    @mcp.tool(title="Hedge a risk", annotations=_READ_ONLY_TOOL)
+    async def hedge(params: HedgeParams) -> HedgeResult:
+        """Size event-contract hedges on markets you already chose.
+
+        Use this after search_markets, browse_markets, or get_event, once you have tickers
+        whose rules map to the user's exposure. Do not use this to look up markets.
+
+        For each leg it fetches the ticker and sizes a buy of that side at the current best
+        ask. Each candidate includes premium, gross $1 payout, residual P&L when a dollar hit
+        is given, and whether top-of-book size capped the position. Legs are sized independently.
+        It does not place orders; send the user to market.url.
+
+        Args:
+            params: Required `legs` (`ticker` plus `side`, default yes) and optional
+                `estimated_hit_dollars` and `coverage`.
+
+        Returns:
+            Sizing inputs and a list of sized `candidates` in leg order.
+
+        Raises:
+            ToolError: If a ticker is missing (upstream 404) or `legs` is empty (422).
+        """
+        markets_and_sides = [(await _call_api(api_client.get_market, leg.ticker), leg.side) for leg in params.legs]
+        return size_hedges(markets_and_sides, params)
+
+    @mcp.tool(title="Browse markets", annotations=_READ_ONLY_TOOL)
     async def browse_markets(params: MarketListParams) -> MarketPage:
         """Browse markets with structured filters and cursor pagination.
 
@@ -73,13 +107,14 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         """
         return await _call_api(api_client.browse_markets, params)
 
-    @mcp.tool(annotations=_READ_ONLY_TOOL)
+    @mcp.tool(title="Search markets", annotations=_READ_ONLY_TOOL)
     async def search_markets(params: MarketSearchParams) -> MarketPage:
         """Semantically search markets for hedges matching a natural-language query.
 
         Prefer this over browse_markets when the user describes an exposure, event, or topic
-        in prose. The upstream API embeds `q` and ranks markets by similarity. Optional filters
-        restrict the candidate set.
+        in prose. After you have a set worth hedging, call hedge with those tickers. The
+        upstream API embeds `q` and ranks markets by similarity. Optional filters restrict
+        the candidate set.
 
         Args:
             params: Required `q` plus the same filters and pagination as browse_markets.
@@ -95,7 +130,7 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         """
         return await _call_api(api_client.search_markets, params)
 
-    @mcp.tool(annotations=_READ_ONLY_TOOL)
+    @mcp.tool(title="Get a market", annotations=_READ_ONLY_TOOL)
     async def get_market(
         ticker: Annotated[str, Field(description="Market primary key, typically taken from a previous page item.")],
     ) -> Market:
@@ -103,7 +138,7 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
 
         Use after search_markets or browse_markets when you need the full record: question,
         resolution rules, yes/no outcomes, ask/bid prices and sizes, volume, and the canonical
-        platform URL.
+        platform URL. hedge fetches this itself for each sized leg.
 
         Args:
             ticker: Market primary key, typically taken from a previous page item.
@@ -116,7 +151,7 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         """
         return await _call_api(api_client.get_market, ticker)
 
-    @mcp.tool(annotations=_READ_ONLY_TOOL)
+    @mcp.tool(title="Get an event", annotations=_READ_ONLY_TOOL)
     async def get_event(
         event_ticker: Annotated[
             str,
@@ -137,6 +172,36 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
             ToolError: If no markets exist for `event_ticker` (upstream 404).
         """
         return await _call_api(api_client.get_event, event_ticker)
+
+    @mcp.prompt
+    def hedge_risk(risk: str) -> str:
+        """Playbook for collecting markets, then sizing a hedge.
+
+        Use this when a user asks to hedge a real-world risk. It tells the agent to search
+        first, keep only clean proxies, then call hedge with those tickers.
+        """
+        return (
+            f"The user wants to hedge this exposure:\n\n{risk}\n\n"
+            "1. Discover markets with search_markets (try several queries and page if needed). "
+            "Use browse_markets for structured filters. If a strike ladder might fit, call "
+            "get_event and compare markets by strike_order.\n"
+            "2. Read question, yes_outcome/no_outcome, and description (resolution rules). "
+            "Keep only clean proxies. State basis risk explicitly. Do not force a match; "
+            "if none fits, stop and say so. Do not call hedge yet.\n"
+            "3. Call hedge with legs as {{ticker, side}} for the kept markets. Default side "
+            "is yes; use no when that market's NO resolution is the hedge. If they gave a "
+            "dollar loss, pass estimated_hit_dollars.\n"
+            "4. Present premium_dollars, gross_payout_dollars, and residual "
+            "(net_if_pays / net_if_expires). Flag liquidity_constrained positions. Legs are "
+            "sized independently; overlapping contracts can overstate coverage.\n"
+            "5. Link market.url. openhedge does not execute trades.\n"
+            "Read resource openhedge://docs/hedge-math if you need the settlement formulas."
+        )
+
+    @mcp.resource("openhedge://docs/hedge-math")
+    def hedge_math() -> str:
+        """Binary settlement, Yes/No complement, and how the hedge tool sizes positions."""
+        return HEDGE_MATH_MARKDOWN
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health(_request: Request) -> JSONResponse:
