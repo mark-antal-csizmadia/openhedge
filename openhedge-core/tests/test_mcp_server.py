@@ -6,6 +6,7 @@ import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from openhedge_core.api_client import OpenhedgeApiError
+from openhedge_core.hedge import HEDGE_MATH_MARKDOWN, HedgeResult
 from openhedge_core.mcp_server import create_mcp
 from openhedge_core.server import MarketHit, MarketListParams, MarketPage, MarketSearchParams
 from openhedge_core.types.market import Event, Market, MarketSource
@@ -89,11 +90,18 @@ async def test_list_tools_documents_api_surface() -> None:
     async with Client(mcp) as client:
         tools = await client.list_tools()
     by_name = {tool.name: tool for tool in tools}
-    assert set(by_name) == {"browse_markets", "search_markets", "get_market", "get_event"}
+    assert set(by_name) == {"hedge", "browse_markets", "search_markets", "get_market", "get_event"}
+    titles = {tool.name: tool.title for tool in tools}
+    assert titles["hedge"] == "Hedge a risk"
+    assert titles["browse_markets"] == "Browse markets"
+    assert titles["search_markets"] == "Search markets"
+    assert titles["get_market"] == "Get a market"
+    assert titles["get_event"] == "Get an event"
     for tool in tools:
         assert tool.description
         assert len(tool.description) > 40
 
+    hedge_schema = by_name["hedge"].inputSchema
     browse_schema = by_name["browse_markets"].inputSchema
     search_schema = by_name["search_markets"].inputSchema
     get_market_schema = by_name["get_market"].inputSchema
@@ -105,8 +113,16 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "dollars" in _schema_text(browse_schema)
     assert "ticker" in _schema_text(get_market_schema)
     assert "event_ticker" in _schema_text(get_event_schema)
+    assert "legs" in _schema_text(hedge_schema)
+    assert "ticker" in _schema_text(hedge_schema)
+    assert "estimated_hit_dollars" in _schema_text(hedge_schema)
+    assert "risk" not in _schema_text(hedge_schema)
     assert "natural-language" in (by_name["search_markets"].description or "").lower()
     assert "strike_order" in (by_name["get_event"].description or "")
+    hedge_description = (by_name["hedge"].description or "").lower()
+    assert "ticker" in hedge_description
+    assert "search_markets" in hedge_description
+    assert "does not place orders" in hedge_description
 
 
 @pytest.mark.asyncio
@@ -187,6 +203,66 @@ async def test_search_unavailable_is_tool_error() -> None:
     async with Client(mcp) as client:
         with pytest.raises(ToolError, match="embeddings are not configured"):
             await client.call_tool("search_markets", {"params": {"q": "oil"}})
+
+
+@pytest.mark.asyncio
+async def test_hedge_fetches_legs_and_sizes() -> None:
+    api = FakeApiClient()
+    market = _market(ticker="MKT-0", yes_ask_price=0.4, yes_ask_size=1000.0)
+    api.markets["MKT-0"] = market
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "hedge",
+            {
+                "params": {
+                    "legs": [{"ticker": "MKT-0", "side": "yes"}],
+                    "estimated_hit_dollars": 100,
+                    "coverage": 1.0,
+                }
+            },
+        )
+    assert api.get_market_calls == ["MKT-0"]
+    assert api.search_calls == []
+    hedge = HedgeResult.model_validate(result.structured_content)
+    assert len(hedge.candidates) == 1
+    candidate = hedge.candidates[0]
+    assert candidate.market.ticker == "MKT-0"
+    assert candidate.side == "yes"
+    assert candidate.contracts == pytest.approx(100.0)
+    assert candidate.premium_dollars == pytest.approx(40.0)
+
+
+@pytest.mark.asyncio
+async def test_hedge_missing_ticker_is_tool_error() -> None:
+    api = FakeApiClient()
+    api.errors["MISSING"] = OpenhedgeApiError(404, "market not found")
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match="market not found"):
+            await client.call_tool("hedge", {"params": {"legs": [{"ticker": "MISSING"}]}})
+
+
+@pytest.mark.asyncio
+async def test_list_prompts_and_resources() -> None:
+    mcp = create_mcp(api_client=FakeApiClient())
+    async with Client(mcp) as client:
+        prompts = await client.list_prompts()
+        resources = await client.list_resources()
+        prompt = await client.get_prompt("hedge_risk", {"risk": "diesel above $5"})
+        resource = await client.read_resource("openhedge://docs/hedge-math")
+    by_name = {item.name: item for item in prompts}
+    assert "hedge_risk" in by_name
+    assert by_name["hedge_risk"].description
+    uris = {str(item.uri) for item in resources}
+    assert "openhedge://docs/hedge-math" in uris
+    prompt_text = "".join(getattr(message.content, "text", "") or "" for message in prompt.messages)
+    assert "diesel above $5" in prompt_text
+    assert "search_markets" in prompt_text.lower()
+    assert "none fits" in prompt_text.lower()
+    assert "hedge" in prompt_text.lower()
+    resource_text = "".join(block.text for block in resource)
+    assert resource_text == HEDGE_MATH_MARKDOWN
 
 
 @pytest.mark.asyncio
