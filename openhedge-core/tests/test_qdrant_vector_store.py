@@ -237,6 +237,22 @@ async def test_query_returns_nearest_neighbors_with_filters() -> None:
 
 
 @pytest.mark.asyncio
+async def test_custom_point_id_namespace_uses_different_ids() -> None:
+    async with qdrant_store() as (client, store):
+        custom = QdrantVectorStore(
+            client,
+            collection=COLLECTION,
+            point_id_namespace="https://example.test/markets",
+        )
+        await custom.upsert_points(
+            [VectorPoint(id="MKT-NEW", vector=[0.0] * TEST_EMBEDDING_DIM, payload={"ticker": "MKT-NEW"})]
+        )
+
+        assert await custom.get_payload("MKT-NEW") == {"ticker": "MKT-NEW"}
+        assert await store.get_payload("MKT-NEW") is None
+
+
+@pytest.mark.asyncio
 async def test_get_payload_returns_payload_or_none() -> None:
     async with qdrant_store() as (_, store):
         await store.upsert_points(

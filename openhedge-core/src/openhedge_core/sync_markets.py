@@ -207,6 +207,7 @@ async def async_main() -> None:
             store = QdrantVectorStore(
                 qdrant,
                 collection=settings.qdrant.collection,
+                point_id_namespace=settings.qdrant.point_id_namespace,
             )
             embedder = OpenRouterEmbeddingClient(
                 openrouter_client,

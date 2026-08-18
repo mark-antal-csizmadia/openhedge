@@ -17,13 +17,13 @@ from qdrant_client.models import (
 
 DEFAULT_QDRANT_URL = "http://localhost:6333"
 DEFAULT_QDRANT_COLLECTION = "markets"
-POINT_ID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "https://openhedge.dev/markets")
+DEFAULT_POINT_ID_NAMESPACE = "https://openhedge.app/markets"
 
 logger = logging.getLogger(__name__)
 
 
-def point_id(ticker: str) -> str:
-    return str(uuid.uuid5(POINT_ID_NAMESPACE, ticker))
+def point_id(ticker: str, *, namespace: str = DEFAULT_POINT_ID_NAMESPACE) -> str:
+    return str(uuid.uuid5(uuid.uuid5(uuid.NAMESPACE_URL, namespace), ticker))
 
 
 class VectorPoint(BaseModel):
@@ -92,9 +92,19 @@ class QdrantVectorStore:
         "open_interest": PayloadSchemaType.FLOAT,
     }
 
-    def __init__(self, client: AsyncQdrantClient, *, collection: str) -> None:
+    def __init__(
+        self,
+        client: AsyncQdrantClient,
+        *,
+        collection: str,
+        point_id_namespace: str = DEFAULT_POINT_ID_NAMESPACE,
+    ) -> None:
         self._client = client
         self._collection = collection
+        self._point_id_namespace = point_id_namespace
+
+    def _point_id(self, ticker: str) -> str:
+        return point_id(ticker, namespace=self._point_id_namespace)
 
     async def setup(self, *, vector_size: int) -> None:
         if not await self._client.collection_exists(self._collection):
@@ -125,7 +135,7 @@ class QdrantVectorStore:
     async def get_existing_ids(self, ids: Sequence[str]) -> set[str]:
         if not ids:
             return set()
-        id_map = {point_id(ticker): ticker for ticker in ids}
+        id_map = {self._point_id(ticker): ticker for ticker in ids}
         records = await self._client.retrieve(
             collection_name=self._collection,
             ids=list(id_map),
@@ -137,7 +147,7 @@ class QdrantVectorStore:
     async def get_payload(self, ticker: str) -> dict[str, Any] | None:
         records = await self._client.retrieve(
             collection_name=self._collection,
-            ids=[point_id(ticker)],
+            ids=[self._point_id(ticker)],
             with_payload=True,
             with_vectors=False,
         )
@@ -150,7 +160,9 @@ class QdrantVectorStore:
             return
         await self._client.upsert(
             collection_name=self._collection,
-            points=[PointStruct(id=point_id(point.id), vector=point.vector, payload=point.payload) for point in points],
+            points=[
+                PointStruct(id=self._point_id(point.id), vector=point.vector, payload=point.payload) for point in points
+            ],
         )
 
     async def update_payloads(self, updates: Sequence[PayloadUpdate]) -> None:
@@ -166,7 +178,7 @@ class QdrantVectorStore:
                 SetPayloadOperation(
                     set_payload=SetPayload(
                         payload=update.payload,
-                        points=[point_id(update.id)],
+                        points=[self._point_id(update.id)],
                     )
                 )
                 for update in existing_updates
@@ -178,7 +190,7 @@ class QdrantVectorStore:
             return
         await self._client.delete(
             collection_name=self._collection,
-            points_selector=[point_id(ticker) for ticker in ids],
+            points_selector=[self._point_id(ticker) for ticker in ids],
         )
 
     async def scroll_points(

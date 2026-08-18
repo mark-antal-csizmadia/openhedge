@@ -8,13 +8,14 @@ from openhedge_core.settings import (
     SetupQdrantSettings,
     SyncMarketsSettings,
 )
-from openhedge_core.vector_store import DEFAULT_QDRANT_COLLECTION, DEFAULT_QDRANT_URL
+from openhedge_core.vector_store import DEFAULT_POINT_ID_NAMESPACE, DEFAULT_QDRANT_COLLECTION, DEFAULT_QDRANT_URL
 from pydantic import ValidationError
 
 _SETTINGS_ENV = (
     "QDRANT_URL",
     "QDRANT_API_KEY",
     "QDRANT_COLLECTION",
+    "QDRANT_POINT_ID_NAMESPACE",
     "OPENROUTER_API_KEY",
     "OPENROUTER_EMBEDDING_MODEL",
     "OPENROUTER_EMBEDDING_DIM",
@@ -41,6 +42,7 @@ def test_server_settings_defaults() -> None:
     assert settings.qdrant.url == DEFAULT_QDRANT_URL
     assert settings.qdrant.api_key is None
     assert settings.qdrant.collection == DEFAULT_QDRANT_COLLECTION
+    assert settings.qdrant.point_id_namespace == DEFAULT_POINT_ID_NAMESPACE
     assert settings.openrouter.api_key is None
     assert settings.openrouter.embedding_model == DEFAULT_EMBEDDING_MODEL
     assert settings.openrouter.embedding_dim == EMBEDDING_DIM
@@ -59,19 +61,24 @@ def test_setup_qdrant_settings_defaults() -> None:
     settings = SetupQdrantSettings()
     assert settings.qdrant.url == DEFAULT_QDRANT_URL
     assert settings.qdrant.collection == DEFAULT_QDRANT_COLLECTION
+    assert settings.qdrant.point_id_namespace == DEFAULT_POINT_ID_NAMESPACE
     assert settings.openrouter.embedding_dim == EMBEDDING_DIM
 
 
 def test_nested_qdrant_and_openrouter_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("QDRANT_URL", "http://qdrant:6333")
     monkeypatch.setenv("QDRANT_COLLECTION", "other")
+    monkeypatch.setenv("QDRANT_POINT_ID_NAMESPACE", "https://example.test/markets")
     monkeypatch.setenv("OPENROUTER_EMBEDDING_MODEL", "custom/model")
     monkeypatch.setenv("OPENROUTER_EMBEDDING_DIM", "1024")
+    monkeypatch.setenv("OPENROUTER_HTTP_REFERER", "https://example.test")
     settings = ServerSettings()
     assert settings.qdrant.url == "http://qdrant:6333"
     assert settings.qdrant.collection == "other"
+    assert settings.qdrant.point_id_namespace == "https://example.test/markets"
     assert settings.openrouter.embedding_model == "custom/model"
     assert settings.openrouter.embedding_dim == 1024
+    assert settings.openrouter.http_referer == "https://example.test"
 
 
 def test_nested_qdrant_url_keeps_collection_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -79,6 +86,7 @@ def test_nested_qdrant_url_keeps_collection_default(monkeypatch: pytest.MonkeyPa
     settings = ServerSettings()
     assert settings.qdrant.url == "http://qdrant:6333"
     assert settings.qdrant.collection == DEFAULT_QDRANT_COLLECTION
+    assert settings.qdrant.point_id_namespace == DEFAULT_POINT_ID_NAMESPACE
     assert settings.qdrant.api_key is None
 
 
@@ -122,4 +130,5 @@ def test_sync_markets_settings_reads_openrouter_api_key(monkeypatch: pytest.Monk
     settings = SyncMarketsSettings()
     assert settings.openrouter.api_key == "sk-test"
     assert settings.qdrant.collection == DEFAULT_QDRANT_COLLECTION
+    assert settings.qdrant.point_id_namespace == DEFAULT_POINT_ID_NAMESPACE
     assert settings.openrouter.embedding_model == DEFAULT_EMBEDDING_MODEL
