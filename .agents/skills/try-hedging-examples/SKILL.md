@@ -1,0 +1,75 @@
+---
+name: try-hedging-examples
+description: >-
+  Connects Cursor to the local openhedge MCP and runs Blanket-style hedge
+  example prompts. Use when the user wants to try hedging, run examples, install
+  or connect MCP, or walk through search_markets / hedge / present_hedge.
+---
+
+# Try hedging examples
+
+Walk the user through connecting MCP, then run one example hedge. Do not place trades. If the stack is not up, follow [how-to-get-started](../how-to-get-started/SKILL.md) first.
+
+## Workflow
+
+```
+- [ ] MCP serving (`curl -sS http://localhost:8001/ready`)
+- [ ] `.cursor/mcp.json` present (create if missing)
+- [ ] User confirmed a green `openhedge` server in Cursor Settings
+- [ ] User picked an example prompt
+- [ ] Ran via MCP `hedge_risk` (or search → get_market → hedge → present_hedge)
+```
+
+## Install MCP
+
+Confirm the server:
+
+```bash
+curl -sS http://localhost:8001/ready
+```
+
+If missing, create [`.cursor/mcp.json`](../../../.cursor/mcp.json):
+
+```json
+{
+  "mcpServers": {
+    "openhedge": {
+      "url": "http://localhost:8001/mcp"
+    }
+  }
+}
+```
+
+Do not add a `type` field. Ask the user to reload MCP and confirm `openhedge` is green.
+
+Use MCP tools `search_markets`, `get_market`, `hedge`, and `present_hedge`. Prefer the MCP `hedge_risk` prompt. State basis risk. If none fits, call `present_hedge` with `verdict=none`.
+
+## Example prompts
+
+Source: [tryblanket.app/#examples](https://tryblanket.app/#examples). Offer these; run the one the user picks. Only Atlas publishes a first-person sentence; the rest match that voice from the case title and homepage chips.
+
+**Atlas Trucking** (Denver, fuel)
+
+> I run a four-truck fleet in Denver. Diesel above $5 could cost us about $50,000 this year.
+
+**Wrigleyville Tap** (Chicago, sports)
+
+> I run a bar in Wrigleyville. If the Cubs win, I want to fund a customer offer; the promo could cost us about $5,000.
+
+**Prairie Gold Farms** (Iowa, input)
+
+> I farm in central Iowa. A fertilizer jump toward $1,000 a ton would squeeze this season’s margins.
+
+**Taverna Bonfouca** (New Orleans, weather)
+
+> I run a restaurant in New Orleans. A major hurricane this season would wipe out our outdoor covers and tourist weeks.
+
+**Northline Dental** (Manchester NH, financing)
+
+> I run a dental practice in Manchester, NH. A floating-rate reset toward 4.75% would raise our equipment-loan payments.
+
+**Harbor Street Books** (Portland ME, missing market)
+
+> I run a bookstore in Portland, Maine. A weak cruise-ship weekend would cut our walk-in sales.
+
+Harbor Street Books is a **missing-market** case. Do not force a match; `present_hedge` with `verdict=none` is a valid result.
