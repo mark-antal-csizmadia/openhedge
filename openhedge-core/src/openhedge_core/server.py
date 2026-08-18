@@ -39,13 +39,8 @@ MAX_VOCAB_LIMIT = 100
 logger = logging.getLogger(__name__)
 
 
-class MarketHit(BaseModel):
-    market: MarketSummary
-    score: float | None = None
-
-
 class MarketPage(BaseModel):
-    items: list[MarketHit]
+    items: list[MarketSummary]
     next_cursor: str | None
     limit: int
 
@@ -161,7 +156,7 @@ async def browse_markets(
         payload_fields=MARKET_SUMMARY_PAYLOAD_FIELDS,
     )
     return MarketPage(
-        items=[MarketHit(market=MarketSummary.model_validate(payload)) for payload in payloads],
+        items=[MarketSummary.model_validate(payload) for payload in payloads],
         next_cursor=next_cursor,
         limit=params.limit,
     )
@@ -180,14 +175,14 @@ async def search_markets(
         raise HTTPException(status_code=502, detail="embedding failed")
 
     store: VectorStore = request.app.state.store
-    hits = await store.query_points(
+    payloads = await store.query_points(
         vectors[0],
         to_qdrant_filter(params),
         limit=params.limit,
         payload_fields=MARKET_SUMMARY_PAYLOAD_FIELDS,
     )
     return MarketPage(
-        items=[MarketHit(market=MarketSummary.model_validate(payload), score=score) for payload, score in hits],
+        items=[MarketSummary.model_validate(payload) for payload in payloads],
         next_cursor=None,
         limit=params.limit,
     )

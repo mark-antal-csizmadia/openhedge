@@ -36,8 +36,9 @@ openhedge discovers hedges in event contracts and prediction markets. It does no
 Workflow:
 1. Use search_markets (try several queries or add filters) when the user describes an exposure in
    prose. Use browse_markets when they already have structured filters. Hits are compact:
-   question, outcomes, prices/sizes, and url — not resolution rules. Use list_categories and
-   list_tags for the most popular filter values, not a complete catalog.
+   question, outcomes, prices/sizes, end_datetime, and url — not resolution rules.
+   All returned markets are open. Judge relevance from those fields; drop poor proxies.
+   Use list_categories and list_tags for the most popular filter values, not a complete catalog.
 2. Use get_event when a strike ladder might fit. Compare question, yes_outcome/no_outcome,
    and strike_order. get_event is capped; if truncated is true, continue with browse_markets
    using event_ticker=[that ticker] and follow next_cursor. Browse is not strike-ordered and
@@ -107,9 +108,9 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         """Browse markets with structured filters and cursor pagination.
 
         Use this when the user already knows filters such as category, tags, tickers, or price
-        ranges, and does not need semantic search. Results are not ranked by relevance; each
-        item's score is null. Hits are compact (question, outcomes, prices/sizes, url); call
-        get_market for resolution rules.
+        ranges, and does not need semantic search. Results are not ranked by relevance. Hits are
+        compact (question, outcomes, prices/sizes, end_datetime, url); call get_market for
+        resolution rules. All returned markets are open.
 
         Args:
             params: Filters plus page size and optional cursor. Keyword list filters are OR'd
@@ -127,18 +128,20 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         """Semantically search markets for hedges matching a natural-language query.
 
         Prefer this over browse_markets when the user describes an exposure, event, or topic
-        in prose. Hits are compact (question, outcomes, prices/sizes, url). Call get_market
-        for resolution rules before keeping a proxy, then hedge with those tickers. The
-        upstream API embeds `q` and ranks markets by similarity. Optional filters restrict
-        the candidate set. This is a single page; refine `q` or add filters rather than paging.
+        in prose. Hits are compact (question, outcomes, prices/sizes, end_datetime, url). Call
+        get_market for resolution rules before keeping a proxy, then hedge with those tickers.
+        The upstream API embeds `q` and returns nearest neighbors. Optional filters restrict
+        the candidate set. All returned markets are open. Judge relevance from question,
+        outcomes, prices, and end_datetime; drop poor proxies. This is a single page; refine
+        `q` or add filters rather than paging.
 
         Args:
             params: Required `q` plus optional filters and `limit` (default 8, maximum 20).
                 Do not page; refine `q` or add filters for more results.
 
         Returns:
-            Compact market hits with similarity `score` on each. A single page; `next_cursor`
-            is always null.
+            Compact market hits, nearest neighbors first. A single page; `next_cursor` is
+            always null.
 
         Raises:
             ToolError: If embeddings are not configured (upstream 503) or `q` is empty (422).

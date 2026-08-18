@@ -225,16 +225,15 @@ async def test_query_returns_nearest_neighbors_with_filters() -> None:
             ]
         )
 
-        hits = await store.query_points(_dense(0), None, limit=2)
-        assert [payload["ticker"] for payload, _ in hits] == ["NEAR", "FAR"]
-        assert hits[0][1] > hits[1][1]
+        payloads = await store.query_points(_dense(0), None, limit=2)
+        assert [payload["ticker"] for payload in payloads] == ["NEAR", "FAR"]
 
         filtered = await store.query_points(
             _dense(0),
             to_qdrant_filter(MarketFilters(category=["Sports"])),
             limit=2,
         )
-        assert [payload["ticker"] for payload, _ in filtered] == ["FAR"]
+        assert [payload["ticker"] for payload in filtered] == ["FAR"]
 
 
 @pytest.mark.asyncio
@@ -280,13 +279,13 @@ async def test_scroll_and_query_honor_payload_field_mask() -> None:
         )
         assert payloads == [{"ticker": "MKT-NEW", "question": "new"}]
 
-        hits = await store.query_points(
+        payloads = await store.query_points(
             _dense(0),
             None,
             limit=1,
             payload_fields=["ticker"],
         )
-        assert hits[0][0] == {"ticker": "MKT-NEW"}
+        assert payloads == [{"ticker": "MKT-NEW"}]
 
 
 @pytest.mark.asyncio

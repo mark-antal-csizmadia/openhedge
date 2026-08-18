@@ -66,7 +66,7 @@ class VectorStore(Protocol):
         *,
         limit: int,
         payload_fields: Sequence[str] | None = None,
-    ) -> list[tuple[dict[str, Any], float]]: ...
+    ) -> list[dict[str, Any]]: ...
 
     async def facet_values(self, field: Literal["category", "tags"], *, limit: int) -> list[str]: ...
 
@@ -202,7 +202,7 @@ class QdrantVectorStore:
         *,
         limit: int,
         payload_fields: Sequence[str] | None = None,
-    ) -> list[tuple[dict[str, Any], float]]:
+    ) -> list[dict[str, Any]]:
         response = await self._client.query_points(
             collection_name=self._collection,
             query=list(vector),
@@ -211,7 +211,7 @@ class QdrantVectorStore:
             with_payload=_payload_selector(payload_fields),
             with_vectors=False,
         )
-        return [(_record_payload(point.payload), float(point.score)) for point in response.points]
+        return [_record_payload(point.payload) for point in response.points]
 
     async def facet_values(self, field: Literal["category", "tags"], *, limit: int) -> list[str]:
         response = await self._client.facet(
