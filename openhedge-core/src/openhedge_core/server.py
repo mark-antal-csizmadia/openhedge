@@ -17,7 +17,7 @@ from openhedge_core.embeddings import (
     OpenRouterEmbeddingClient,
 )
 from openhedge_core.filters import MarketFilters, to_qdrant_filter
-from openhedge_core.types.market import Event, Market
+from openhedge_core.types.market import MARKET_SUMMARY_PAYLOAD_FIELDS, Event, Market, MarketSummary
 from openhedge_core.vector_store import (
     DEFAULT_QDRANT_COLLECTION,
     DEFAULT_QDRANT_URL,
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 class MarketHit(BaseModel):
-    market: Market
+    market: MarketSummary
     score: float | None = None
 
 
@@ -129,9 +129,10 @@ async def browse_markets(
         to_qdrant_filter(params),
         limit=params.limit,
         cursor=params.cursor or None,
+        payload_fields=MARKET_SUMMARY_PAYLOAD_FIELDS,
     )
     return MarketPage(
-        items=[MarketHit(market=Market.model_validate(payload)) for payload in payloads],
+        items=[MarketHit(market=MarketSummary.model_validate(payload)) for payload in payloads],
         next_cursor=next_cursor,
         limit=params.limit,
     )
@@ -158,11 +159,12 @@ async def search_markets(
         to_qdrant_filter(params),
         limit=params.limit + 1,
         offset=offset,
+        payload_fields=MARKET_SUMMARY_PAYLOAD_FIELDS,
     )
     has_more = len(hits) > params.limit
     page_hits = hits[: params.limit]
     return MarketPage(
-        items=[MarketHit(market=Market.model_validate(payload), score=score) for payload, score in page_hits],
+        items=[MarketHit(market=MarketSummary.model_validate(payload), score=score) for payload, score in page_hits],
         next_cursor=str(offset + params.limit) if has_more else None,
         limit=params.limit,
     )
@@ -182,13 +184,18 @@ async def get_event(request: Request, event_ticker: str) -> Event:
     payloads: list[dict[str, Any]] = []
     cursor: str | None = None
     while True:
-        page, cursor = await store.scroll_points(qfilter, limit=EVENT_SCROLL_PAGE_SIZE, cursor=cursor)
+        page, cursor = await store.scroll_points(
+            qfilter,
+            limit=EVENT_SCROLL_PAGE_SIZE,
+            cursor=cursor,
+            payload_fields=MARKET_SUMMARY_PAYLOAD_FIELDS,
+        )
         payloads.extend(page)
         if cursor is None:
             break
     if not payloads:
         raise HTTPException(status_code=404, detail="event not found")
-    markets = [Market.model_validate(payload) for payload in payloads]
+    markets = [MarketSummary.model_validate(payload) for payload in payloads]
     return Event.from_markets(markets)
 
 

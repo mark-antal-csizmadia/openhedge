@@ -253,3 +253,39 @@ async def test_get_payload_returns_payload_or_none() -> None:
 
         assert await store.get_payload("MKT-NEW") == {"ticker": "MKT-NEW", "question": "new"}
         assert await store.get_payload("MISSING") is None
+
+
+@pytest.mark.asyncio
+async def test_scroll_and_query_honor_payload_field_mask() -> None:
+    async with qdrant_store() as (_, store):
+        await store.upsert_points(
+            [
+                VectorPoint(
+                    id="MKT-NEW",
+                    vector=_dense(0),
+                    payload={
+                        "ticker": "MKT-NEW",
+                        "question": "new",
+                        "description": "long rules text",
+                        "volume": 100.0,
+                    },
+                )
+            ]
+        )
+
+        payloads, _ = await store.scroll_points(
+            None,
+            limit=10,
+            cursor=None,
+            payload_fields=["ticker", "question"],
+        )
+        assert payloads == [{"ticker": "MKT-NEW", "question": "new"}]
+
+        hits = await store.query_points(
+            _dense(0),
+            None,
+            limit=1,
+            offset=0,
+            payload_fields=["ticker"],
+        )
+        assert hits[0][0] == {"ticker": "MKT-NEW"}

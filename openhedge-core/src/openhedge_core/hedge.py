@@ -58,9 +58,11 @@ contract count. That is a warning, not a reason to invent size beyond the quoted
 ## When to say none fits
 
 Reject a candidate when `question`, `yes_outcome` / `no_outcome`, or `description`
-(resolution rules) do not map cleanly to the user's exposure. Prefer an honest gap over a
-forced proxy. Basis risk (for example hedging diesel with a crude-oil strike) must be
-stated explicitly. Do not call `hedge` until the set is worth sizing.
+(resolution rules) do not map cleanly to the user's exposure. List, search, and event
+hits are compact and omit `description`; fetch rules with `get_market` before keeping a
+proxy. Prefer an honest gap over a forced proxy. Basis risk (for example hedging diesel
+with a crude-oil strike) must be stated explicitly. Do not call `hedge` until the set is
+worth sizing.
 
 openhedge does not place orders. Send the user to `market.url` on the source venue.
 """
