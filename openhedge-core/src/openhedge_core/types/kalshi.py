@@ -26,6 +26,13 @@ class KalshiEventStatus(StrEnum):
     SETTLED = "settled"
 
 
+class KalshiMarketType(StrEnum):
+    """Type of a Kalshi market."""
+
+    BINARY = "binary"
+    SCALAR = "scalar"
+
+
 class KalshiMarket(BaseModel):
     """Kalshi market."""
 
@@ -37,6 +44,7 @@ class KalshiMarket(BaseModel):
     yes_sub_title: str
     no_sub_title: str
     status: KalshiMarketStatus
+    market_type: KalshiMarketType
     last_price_dollars: NonNegativeFloat
     yes_ask_dollars: NonNegativeFloat
     yes_ask_size_fp: NonNegativeFloat

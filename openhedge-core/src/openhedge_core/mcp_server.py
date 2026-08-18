@@ -200,10 +200,11 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         on this ticker so you have read the resolution rules. Do not use this to look up
         markets. Call once per kept ticker; you may call hedge in parallel.
 
-        It fetches the ticker and sizes a buy of that side at the current best ask. The
-        candidate includes premium, gross $1 payout, residual P&L when a dollar hit is
-        given, and whether top-of-book size capped the position. Calls are sized
-        independently. It does not place orders; send the user to url.
+        It fetches the ticker and sizes a buy of that side at the current best ask only
+        (no deeper book / VWAP). The candidate includes premium (fees omitted), gross $1
+        payout, residual P&L when a dollar hit is given, and whether top-of-book size
+        capped the position. Calls are sized independently. It does not place orders;
+        send the user to url.
 
         Args:
             ticker: Market primary key.
