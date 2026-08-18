@@ -4,13 +4,21 @@ from typing import Any, Protocol, TypeVar
 import httpx
 from pydantic import BaseModel
 
-from openhedge_core.server import MarketListParams, MarketPage, MarketSearchParams, VocabList, VocabListParams
+from openhedge_core.server import (
+    MarketListParams,
+    MarketPage,
+    MarketSearchParams,
+    ReadyStatus,
+    VocabList,
+    VocabListParams,
+)
 from openhedge_core.types.market import Event, Market
 
 T = TypeVar("T", bound=BaseModel)
 
 
 class MarketApi(Protocol):
+    async def ready(self) -> ReadyStatus: ...
     async def browse_markets(self, params: MarketListParams) -> MarketPage: ...
     async def search_markets(self, params: MarketSearchParams) -> MarketPage: ...
     async def get_market(self, ticker: str) -> Market: ...
@@ -36,6 +44,9 @@ class OpenhedgeApiClient:
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+    async def ready(self) -> ReadyStatus:
+        return await self._get("/ready", ReadyStatus)
 
     async def browse_markets(self, params: MarketListParams) -> MarketPage:
         return await self._get("/markets", MarketPage, params=params)

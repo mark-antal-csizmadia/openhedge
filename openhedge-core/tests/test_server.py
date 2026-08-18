@@ -77,9 +77,14 @@ class FakeSearchStore:
         self.payloads: dict[str, dict[str, Any]] = {}
         self.facet_calls: list[dict[str, Any]] = []
         self.facet_result: dict[str, list[str]] = {}
+        self.ready_error: Exception | None = None
 
     async def setup(self, *, vector_size: int) -> None:
         return
+
+    async def ready(self) -> None:
+        if self.ready_error is not None:
+            raise self.ready_error
 
     async def get_existing_ids(self, ids: Sequence[str]) -> set[str]:
         return set()
@@ -160,6 +165,34 @@ async def test_health() -> None:
         response = await client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_ready_reports_qdrant_and_unconfigured_embedder() -> None:
+    store = FakeSearchStore()
+    async with api_client(store) as client:
+        response = await client.get("/ready")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "qdrant": "ok", "embedder": "unconfigured"}
+
+
+@pytest.mark.asyncio
+async def test_ready_reports_configured_embedder() -> None:
+    store = FakeSearchStore()
+    async with api_client(store, RecordingEmbedder()) as client:
+        response = await client.get("/ready")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "qdrant": "ok", "embedder": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_ready_returns_503_when_store_is_not_ready() -> None:
+    store = FakeSearchStore()
+    store.ready_error = RuntimeError("qdrant down")
+    async with api_client(store) as client:
+        response = await client.get("/ready")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "not ready"}
 
 
 @pytest.mark.asyncio

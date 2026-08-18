@@ -69,6 +69,9 @@ class FakeVectorStore:
     async def setup(self, *, vector_size: int) -> None:
         return
 
+    async def ready(self) -> None:
+        return
+
     async def get_existing_ids(self, ids: Sequence[str]) -> set[str]:
         return {point_id for point_id in ids if point_id in self.points}
 

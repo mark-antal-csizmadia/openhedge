@@ -88,6 +88,12 @@ class VocabList(BaseModel):
     limit: int
 
 
+class ReadyStatus(BaseModel):
+    status: str
+    qdrant: str
+    embedder: str
+
+
 def create_app(*, store: VectorStore | None = None, embedder: EmbeddingClient | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -131,6 +137,7 @@ def create_app(*, store: VectorStore | None = None, embedder: EmbeddingClient | 
         app.state.store = store
         app.state.embedder = embedder
     app.add_api_route("/health", health, methods=["GET"])
+    app.add_api_route("/ready", ready, methods=["GET"], response_model=ReadyStatus)
     app.add_api_route("/markets", browse_markets, methods=["GET"], response_model=MarketPage)
     app.add_api_route("/markets/{ticker}", get_market, methods=["GET"], response_model=Market)
     app.add_api_route("/events/{event_ticker}", get_event, methods=["GET"], response_model=Event)
@@ -142,6 +149,21 @@ def create_app(*, store: VectorStore | None = None, embedder: EmbeddingClient | 
 
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+async def ready(request: Request) -> ReadyStatus:
+    store: VectorStore = request.app.state.store
+    try:
+        await store.ready()
+    except Exception:
+        logger.exception("readiness check failed")
+        raise HTTPException(status_code=503, detail="not ready") from None
+    embedder: EmbeddingClient | None = request.app.state.embedder
+    return ReadyStatus(
+        status="ok",
+        qdrant="ok",
+        embedder="ok" if embedder is not None else "unconfigured",
+    )
 
 
 async def browse_markets(

@@ -8,7 +8,7 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 from openhedge_core.api_client import OpenhedgeApiClient, OpenhedgeApiError
-from openhedge_core.server import MarketListParams, MarketPage, MarketSearchParams, VocabListParams
+from openhedge_core.server import MarketListParams, MarketPage, MarketSearchParams, ReadyStatus, VocabListParams
 from openhedge_core.types.market import Event, Market, MarketSource
 
 
@@ -48,6 +48,34 @@ async def api_client(
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://api") as http:
         yield OpenhedgeApiClient(http)
+
+
+@pytest.mark.asyncio
+async def test_ready_parses_status() -> None:
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        return httpx.Response(200, json={"status": "ok", "qdrant": "ok", "embedder": "unconfigured"})
+
+    async with api_client(handler) as client:
+        result = await client.ready()
+
+    assert captured["path"] == "/ready"
+    assert result == ReadyStatus(status="ok", qdrant="ok", embedder="unconfigured")
+
+
+@pytest.mark.asyncio
+async def test_ready_503_raises() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"detail": "not ready"})
+
+    async with api_client(handler) as client:
+        with pytest.raises(OpenhedgeApiError) as exc_info:
+            await client.ready()
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == "not ready"
 
 
 @pytest.mark.asyncio

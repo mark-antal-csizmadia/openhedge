@@ -12,6 +12,7 @@ from openhedge_core.server import (
     MarketListParams,
     MarketPage,
     MarketSearchParams,
+    ReadyStatus,
     VocabList,
     VocabListParams,
 )
@@ -62,6 +63,12 @@ class FakeApiClient:
         self.markets: dict[str, Market] = {}
         self.events: dict[str, Event] = {}
         self.errors: dict[str, OpenhedgeApiError] = {}
+        self.ready_result = ReadyStatus(status="ok", qdrant="ok", embedder="ok")
+
+    async def ready(self) -> ReadyStatus:
+        if "ready" in self.errors:
+            raise self.errors["ready"]
+        return self.ready_result
 
     async def browse_markets(self, params: MarketListParams) -> MarketPage:
         self.browse_calls.append(params)
@@ -389,3 +396,26 @@ async def test_health_route() -> None:
         response = await client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_ready_route_proxies_upstream() -> None:
+    api = FakeApiClient()
+    mcp = create_mcp(api_client=api)
+    app = mcp.http_app(stateless_http=True)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/ready")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "qdrant": "ok", "embedder": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_ready_route_returns_upstream_error() -> None:
+    api = FakeApiClient()
+    api.errors["ready"] = OpenhedgeApiError(503, "not ready")
+    mcp = create_mcp(api_client=api)
+    app = mcp.http_app(stateless_http=True)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/ready")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "not ready"}

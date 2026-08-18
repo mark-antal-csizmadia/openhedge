@@ -268,6 +268,14 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
     async def health(_request: Request) -> JSONResponse:
         return JSONResponse({"status": "ok"})
 
+    @mcp.custom_route("/ready", methods=["GET"])
+    async def ready(_request: Request) -> JSONResponse:
+        try:
+            status = await api_client.ready()
+        except OpenhedgeApiError as exc:
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+        return JSONResponse(status.model_dump())
+
     return mcp
 
 

@@ -318,3 +318,18 @@ async def test_facet_values_explodes_tag_arrays_and_honors_limit() -> None:
         assert values[0] == "elections"
         assert set(values) == {"elections", "fed", "nba"}
         assert await store.facet_values("tags", limit=1) == ["elections"]
+
+
+@pytest.mark.asyncio
+async def test_ready_succeeds_when_collection_exists() -> None:
+    async with qdrant_store() as (_, store):
+        await store.ready()
+
+
+@pytest.mark.asyncio
+async def test_ready_raises_when_collection_is_missing() -> None:
+    client = _client(exists=False)
+    store = QdrantVectorStore(client, collection=COLLECTION)
+    with pytest.raises(RuntimeError, match="does not exist"):
+        await store.ready()
+    client.collection_exists.assert_awaited_once_with(COLLECTION)
