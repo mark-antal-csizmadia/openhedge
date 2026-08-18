@@ -56,6 +56,8 @@ _FAT_MARKET_FIELDS = {
     "volume_24hr",
     "open_interest",
     "updated_datetime",
+    "can_close_early",
+    "early_close_condition",
 }
 
 

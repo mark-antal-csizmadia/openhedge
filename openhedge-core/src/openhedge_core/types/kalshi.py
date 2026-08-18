@@ -53,6 +53,8 @@ class KalshiMarket(BaseModel):
     volume_fp: NonNegativeFloat
     volume_24h_fp: NonNegativeFloat
     open_interest_fp: NonNegativeFloat
+    can_close_early: bool = False
+    early_close_condition: str | None = None
 
     @field_validator("open_time", "close_time")
     @classmethod

@@ -28,6 +28,8 @@ def test_payload_keeps_deci_cent_prices_and_two_dp_counts() -> None:
             "volume": 35219704.85,
             "volume_24hr": 9817011.50,
             "open_interest": 27338803.67,
+            "can_close_early": True,
+            "early_close_condition": "This market will close after James Fishback wins the party's nomination.",
         }
     )
     payload = market.payload()
@@ -35,3 +37,7 @@ def test_payload_keeps_deci_cent_prices_and_two_dp_counts() -> None:
     assert payload["yes_bid_price"] == 0.012
     assert payload["yes_ask_size"] == 429905.49
     assert payload["yes_bid_size"] == 13281.1
+    assert payload["can_close_early"] is True
+    assert (
+        payload["early_close_condition"] == "This market will close after James Fishback wins the party's nomination."
+    )

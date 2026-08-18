@@ -67,10 +67,13 @@ at worse prices. That is a warning, not a reason to invent size beyond the quote
 
 Reject a candidate when `question`, `yes_outcome` / `no_outcome`, or `description`
 (resolution rules) do not map cleanly to the user's exposure. List, search, and event
-hits are compact and omit `description`; fetch rules with `get_market` before keeping a
-proxy. Prefer an honest gap over a forced proxy. Basis risk (for example hedging diesel
-with a crude-oil strike) must be stated explicitly. Do not call `hedge` until the set is
-worth sizing.
+hits are compact and omit `description`, `can_close_early`, and `early_close_condition`;
+fetch those with `get_market` before keeping a proxy. `end_datetime` is the scheduled
+close. If `can_close_early` is true, trading can stop earlier when
+`early_close_condition` is met; keep the market only if that still covers the user's
+exposure window. Prefer an honest gap over a forced proxy. Basis risk (for example
+hedging diesel with a crude-oil strike) must be stated explicitly. Do not call `hedge`
+until the set is worth sizing.
 
 openhedge does not place orders. Send the user to `url` on the source venue.
 """
