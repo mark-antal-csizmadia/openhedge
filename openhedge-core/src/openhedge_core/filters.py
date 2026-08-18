@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from qdrant_client.models import Condition, DatetimeRange, FieldCondition, Filter, MatchAny, MatchValue, Range
@@ -25,6 +25,7 @@ FLOAT_FILTER_FIELDS: tuple[str, ...] = (
     "open_interest",
 )
 FILTERABLE_FIELDS: frozenset[str] = frozenset(KEYWORD_FILTER_FIELDS + DATETIME_FILTER_FIELDS + FLOAT_FILTER_FIELDS)
+FILTER_CONTROL_FIELDS: frozenset[str] = frozenset({"tags_mode"})
 
 
 class MarketFilters(BaseModel):
@@ -51,7 +52,11 @@ class MarketFilters(BaseModel):
     )
     tags: list[str] | None = Field(
         default=None,
-        description="Tags to include. Multiple values are OR'd.",
+        description="Tags to include. Combined with `tags_mode` (default OR).",
+    )
+    tags_mode: Literal["any", "all"] = Field(
+        default="any",
+        description="How multiple tags are combined. `any` ORs them; `all` requires every tag.",
     )
     start_datetime_gte: AwareDatetime | None = Field(
         default=None,
@@ -128,9 +133,9 @@ class MarketFilters(BaseModel):
 
 
 def to_qdrant_filter(filters: MarketFilters) -> Filter | None:
-    data = filters.model_dump(exclude_none=True, exclude={"limit", "cursor", "q"})
+    data = filters.model_dump(exclude_none=True, exclude={"limit", "cursor", "q", *FILTER_CONTROL_FIELDS})
     must: list[Condition] = []
-    must.extend(_keyword_conditions(data))
+    must.extend(_keyword_conditions(data, tags_mode=filters.tags_mode))
     must.extend(_datetime_conditions(data))
     must.extend(_float_conditions(data))
     if not must:
@@ -138,14 +143,16 @@ def to_qdrant_filter(filters: MarketFilters) -> Filter | None:
     return Filter(must=must)
 
 
-def _keyword_conditions(data: dict[str, Any]) -> list[FieldCondition]:
+def _keyword_conditions(data: dict[str, Any], *, tags_mode: Literal["any", "all"]) -> list[FieldCondition]:
     conditions: list[FieldCondition] = []
     for field in KEYWORD_FILTER_FIELDS:
         values = data.get(field)
         if not values:
             continue
         normalized = [_keyword_value(value) for value in values]
-        if len(normalized) == 1:
+        if field == "tags" and tags_mode == "all":
+            conditions.extend(FieldCondition(key=field, match=MatchValue(value=value)) for value in normalized)
+        elif len(normalized) == 1:
             conditions.append(FieldCondition(key=field, match=MatchValue(value=normalized[0])))
         else:
             conditions.append(FieldCondition(key=field, match=MatchAny(any=normalized)))

@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -6,9 +7,11 @@ from typing import Any, Literal
 import httpx
 import pytest
 from openhedge_core.server import (
+    DEFAULT_PAGE_LIMIT,
     DEFAULT_VOCAB_LIMIT,
     EVENT_SCROLL_PAGE_SIZE,
     MAX_EVENT_MARKETS,
+    MAX_PAGE_LIMIT,
     MAX_VOCAB_LIMIT,
     create_app,
 )
@@ -77,9 +80,14 @@ class FakeSearchStore:
         self.payloads: dict[str, dict[str, Any]] = {}
         self.facet_calls: list[dict[str, Any]] = []
         self.facet_result: dict[str, list[str]] = {}
+        self.ready_error: Exception | None = None
 
     async def setup(self, *, vector_size: int) -> None:
         return
+
+    async def ready(self) -> None:
+        if self.ready_error is not None:
+            raise self.ready_error
 
     async def get_existing_ids(self, ids: Sequence[str]) -> set[str]:
         return set()
@@ -163,13 +171,41 @@ async def test_health() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ready_reports_qdrant_and_unconfigured_embedder() -> None:
+    store = FakeSearchStore()
+    async with api_client(store) as client:
+        response = await client.get("/ready")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "qdrant": "ok", "embedder": "unconfigured"}
+
+
+@pytest.mark.asyncio
+async def test_ready_reports_configured_embedder() -> None:
+    store = FakeSearchStore()
+    async with api_client(store, RecordingEmbedder()) as client:
+        response = await client.get("/ready")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "qdrant": "ok", "embedder": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_ready_returns_503_when_store_is_not_ready() -> None:
+    store = FakeSearchStore()
+    store.ready_error = RuntimeError("qdrant down")
+    async with api_client(store) as client:
+        response = await client.get("/ready")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "not ready"}
+
+
+@pytest.mark.asyncio
 async def test_browse_returns_page_and_forwards_filters() -> None:
     store = FakeSearchStore()
     market = _market(ticker="MKT-1")
     store.scroll_result = ([market.payload()], "next-page")
     async with api_client(store) as client:
         response = await client.get(
-            "/markets",
+            "/v1/markets",
             params={
                 "category": "Politics",
                 "yes_ask_price_gte": 0.2,
@@ -197,13 +233,72 @@ async def test_browse_returns_page_and_forwards_filters() -> None:
 
 
 @pytest.mark.asyncio
+async def test_browse_defaults_limit() -> None:
+    store = FakeSearchStore()
+    store.scroll_result = ([], None)
+    async with api_client(store) as client:
+        response = await client.get("/v1/markets")
+    assert response.status_code == 200
+    assert response.json()["limit"] == DEFAULT_PAGE_LIMIT
+    assert store.scroll_calls[0]["limit"] == DEFAULT_PAGE_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_browse_limit_out_of_range_returns_422() -> None:
+    async with api_client(FakeSearchStore()) as client:
+        too_low = await client.get("/v1/markets", params={"limit": 0})
+        too_high = await client.get("/v1/markets", params={"limit": MAX_PAGE_LIMIT + 1})
+    assert too_low.status_code == 422
+    assert too_high.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_browse_forwards_tags_mode_all() -> None:
+    store = FakeSearchStore()
+    store.scroll_result = ([], None)
+    async with api_client(store) as client:
+        response = await client.get(
+            "/v1/markets",
+            params=[("tags", "climate"), ("tags", "energy"), ("tags_mode", "all")],
+        )
+    assert response.status_code == 200
+    conditions = [
+        condition
+        for condition in (store.scroll_calls[0]["filters"].must or [])
+        if isinstance(condition, FieldCondition)
+    ]
+    assert [condition.match for condition in conditions] == [
+        MatchValue(value="climate"),
+        MatchValue(value="energy"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_browse_skips_invalid_payloads(caplog: pytest.LogCaptureFixture) -> None:
+    store = FakeSearchStore()
+    valid = _market(ticker="MKT-1")
+    bad = valid.payload()
+    bad["ticker"] = "MKT-BAD"
+    del bad["question"]
+    store.scroll_result = ([valid.payload(), bad], "next-page")
+    with caplog.at_level(logging.WARNING, logger="openhedge_core.server"):
+        async with api_client(store) as client:
+            response = await client.get("/v1/markets")
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["ticker"] for item in body["items"]] == ["MKT-1"]
+    assert body["next_cursor"] == "next-page"
+    assert "MKT-BAD" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_search_embeds_query_and_returns_neighbors() -> None:
     store = FakeSearchStore()
     embedder = RecordingEmbedder([1.0, 0.0, 0.0])
     markets = [_market(ticker=f"MKT-{i}") for i in range(3)]
     store.query_result = [market.payload() for market in markets]
     async with api_client(store, embedder) as client:
-        response = await client.post("/search", json={"q": "oil prices", "limit": 2, "tags": ["fed"]})
+        response = await client.post("/v1/search", json={"q": "oil prices", "limit": 2, "tags": ["fed"]})
     assert response.status_code == 200
     body = response.json()
     assert embedder.calls == [["oil prices"]]
@@ -223,10 +318,48 @@ async def test_search_embeds_query_and_returns_neighbors() -> None:
 
 
 @pytest.mark.asyncio
+async def test_search_forwards_tags_mode_all() -> None:
+    store = FakeSearchStore()
+    embedder = RecordingEmbedder()
+    store.query_result = []
+    async with api_client(store, embedder) as client:
+        response = await client.post(
+            "/v1/search",
+            json={"q": "oil", "tags": ["climate", "energy"], "tags_mode": "all"},
+        )
+    assert response.status_code == 200
+    conditions = [
+        condition for condition in (store.query_calls[0]["filters"].must or []) if isinstance(condition, FieldCondition)
+    ]
+    assert [condition.match for condition in conditions] == [
+        MatchValue(value="climate"),
+        MatchValue(value="energy"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_skips_invalid_payloads(caplog: pytest.LogCaptureFixture) -> None:
+    store = FakeSearchStore()
+    embedder = RecordingEmbedder()
+    valid = _market(ticker="MKT-1")
+    bad = valid.payload()
+    bad["ticker"] = "MKT-BAD"
+    del bad["question"]
+    store.query_result = [valid.payload(), bad]
+    with caplog.at_level(logging.WARNING, logger="openhedge_core.server"):
+        async with api_client(store, embedder) as client:
+            response = await client.post("/v1/search", json={"q": "oil"})
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["ticker"] for item in body["items"]] == ["MKT-1"]
+    assert "MKT-BAD" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_search_requires_query() -> None:
     async with api_client(FakeSearchStore(), RecordingEmbedder()) as client:
-        missing = await client.post("/search", json={})
-        empty = await client.post("/search", json={"q": ""})
+        missing = await client.post("/v1/search", json={})
+        empty = await client.post("/v1/search", json={"q": ""})
     assert missing.status_code == 422
     assert empty.status_code == 422
 
@@ -234,14 +367,14 @@ async def test_search_requires_query() -> None:
 @pytest.mark.asyncio
 async def test_search_without_embedder_returns_503() -> None:
     async with api_client(FakeSearchStore()) as client:
-        response = await client.post("/search", json={"q": "oil"})
+        response = await client.post("/v1/search", json={"q": "oil"})
     assert response.status_code == 503
 
 
 @pytest.mark.asyncio
 async def test_search_rejects_cursor() -> None:
     async with api_client(FakeSearchStore(), RecordingEmbedder()) as client:
-        response = await client.post("/search", json={"q": "oil", "cursor": "abc"})
+        response = await client.post("/v1/search", json={"q": "oil", "cursor": "abc"})
     assert response.status_code == 422
 
 
@@ -251,7 +384,7 @@ async def test_get_market_by_ticker() -> None:
     market = _market(ticker="MKT-1")
     store.payloads["MKT-1"] = market.payload()
     async with api_client(store) as client:
-        response = await client.get("/markets/MKT-1")
+        response = await client.get("/v1/markets/MKT-1")
     assert response.status_code == 200
     body = response.json()
     assert body["ticker"] == "MKT-1"
@@ -264,7 +397,7 @@ async def test_get_market_by_ticker() -> None:
 @pytest.mark.asyncio
 async def test_get_market_missing_returns_404() -> None:
     async with api_client(FakeSearchStore()) as client:
-        response = await client.get("/markets/MISSING")
+        response = await client.get("/v1/markets/MISSING")
     assert response.status_code == 404
 
 
@@ -278,7 +411,7 @@ async def test_get_event_orders_markets_by_strike_order() -> None:
     ]
     store.scroll_result = ([market.payload() for market in markets], None)
     async with api_client(store) as client:
-        response = await client.get("/events/EVT-OPEN")
+        response = await client.get("/v1/events/EVT-OPEN")
     assert response.status_code == 200
     body = response.json()
     assert body["event_ticker"] == "EVT-OPEN"
@@ -309,7 +442,7 @@ async def test_get_event_caps_markets_and_sets_truncated() -> None:
     ]
     store.scroll_result = ([market.payload() for market in markets], None)
     async with api_client(store) as client:
-        response = await client.get("/events/EVT-OPEN")
+        response = await client.get("/v1/events/EVT-OPEN")
     assert response.status_code == 200
     body = response.json()
     assert body["truncated"] is True
@@ -324,7 +457,34 @@ async def test_get_event_caps_markets_and_sets_truncated() -> None:
 @pytest.mark.asyncio
 async def test_get_event_missing_returns_404() -> None:
     async with api_client(FakeSearchStore()) as client:
-        response = await client.get("/events/MISSING")
+        response = await client.get("/v1/events/MISSING")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_event_skips_invalid_payloads() -> None:
+    store = FakeSearchStore()
+    valid = _market(ticker="MKT-1")
+    bad = valid.payload()
+    bad["ticker"] = "MKT-BAD"
+    del bad["question"]
+    store.scroll_result = ([valid.payload(), bad], None)
+    async with api_client(store) as client:
+        response = await client.get("/v1/events/EVT-OPEN")
+    assert response.status_code == 200
+    body = response.json()
+    assert [market["ticker"] for market in body["markets"]] == ["MKT-1"]
+    assert body["market_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_event_all_invalid_payloads_returns_404() -> None:
+    store = FakeSearchStore()
+    bad = _market(ticker="MKT-BAD").payload()
+    del bad["question"]
+    store.scroll_result = ([bad], None)
+    async with api_client(store) as client:
+        response = await client.get("/v1/events/EVT-OPEN")
     assert response.status_code == 404
 
 
@@ -333,7 +493,7 @@ async def test_list_categories_returns_popularity_order() -> None:
     store = FakeSearchStore()
     store.facet_result["category"] = ["Sports", "Politics", "Economics"]
     async with api_client(store) as client:
-        response = await client.get("/categories")
+        response = await client.get("/v1/categories")
     assert response.status_code == 200
     assert response.json() == {
         "items": ["Sports", "Politics", "Economics"],
@@ -348,7 +508,7 @@ async def test_list_categories_truncated_when_facet_fills_limit() -> None:
     store = FakeSearchStore()
     store.facet_result["category"] = ["A", "B", "C"]
     async with api_client(store) as client:
-        response = await client.get("/categories", params={"limit": 3})
+        response = await client.get("/v1/categories", params={"limit": 3})
     assert response.status_code == 200
     assert response.json() == {"items": ["A", "B", "C"], "truncated": True, "limit": 3}
     assert store.facet_calls == [{"field": "category", "limit": 3}]
@@ -359,7 +519,7 @@ async def test_list_tags_returns_popular_values() -> None:
     store = FakeSearchStore()
     store.facet_result["tags"] = ["elections", "fed", "federal-reserve", "nba"]
     async with api_client(store) as client:
-        response = await client.get("/tags")
+        response = await client.get("/v1/tags")
     assert response.status_code == 200
     assert response.json() == {
         "items": ["elections", "fed", "federal-reserve", "nba"],
@@ -374,7 +534,7 @@ async def test_list_tags_honors_limit_and_truncated() -> None:
     store = FakeSearchStore()
     store.facet_result["tags"] = ["elections", "fed", "federal-reserve", "nba"]
     async with api_client(store) as client:
-        response = await client.get("/tags", params={"limit": 2})
+        response = await client.get("/v1/tags", params={"limit": 2})
     assert response.status_code == 200
     assert response.json() == {"items": ["elections", "fed"], "truncated": True, "limit": 2}
     assert store.facet_calls == [{"field": "tags", "limit": 2}]
@@ -383,7 +543,7 @@ async def test_list_tags_honors_limit_and_truncated() -> None:
 @pytest.mark.asyncio
 async def test_vocab_limit_out_of_range_returns_422() -> None:
     async with api_client(FakeSearchStore()) as client:
-        too_low = await client.get("/tags", params={"limit": 0})
-        too_high = await client.get("/categories", params={"limit": MAX_VOCAB_LIMIT + 1})
+        too_low = await client.get("/v1/tags", params={"limit": 0})
+        too_high = await client.get("/v1/categories", params={"limit": MAX_VOCAB_LIMIT + 1})
     assert too_low.status_code == 422
     assert too_high.status_code == 422

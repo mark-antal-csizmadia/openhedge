@@ -40,6 +40,8 @@ class PayloadUpdate(BaseModel):
 class VectorStore(Protocol):
     async def setup(self, *, vector_size: int) -> None: ...
 
+    async def ready(self) -> None: ...
+
     async def get_existing_ids(self, ids: Sequence[str]) -> set[str]: ...
 
     async def get_payload(self, ticker: str) -> dict[str, Any] | None: ...
@@ -115,6 +117,10 @@ class QdrantVectorStore:
                 field_schema=schema,
             )
             logger.info("created payload index %s (%s)", field_name, schema.value)
+
+    async def ready(self) -> None:
+        if not await self._client.collection_exists(self._collection):
+            raise RuntimeError(f"collection {self._collection} does not exist")
 
     async def get_existing_ids(self, ids: Sequence[str]) -> set[str]:
         if not ids:

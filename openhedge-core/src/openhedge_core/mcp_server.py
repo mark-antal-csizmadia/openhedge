@@ -19,7 +19,7 @@ from openhedge_core.types.market import Event, Market
 T = TypeVar("T")
 
 DEFAULT_OPENHEDGE_API_URL = "http://127.0.0.1:8000"
-DEFAULT_MCP_HOST = "0.0.0.0"
+DEFAULT_MCP_HOST = "127.0.0.1"
 DEFAULT_MCP_PORT = 8001
 
 logger = logging.getLogger(__name__)
@@ -56,15 +56,16 @@ Read resource openhedge://docs/hedge-math for settlement, Yes/No complement, and
 The hedge_risk prompt is the playbook for collecting markets then sizing.
 
 Pagination: browse_markets uses cursor pagination. If a page includes next_cursor, pass it back as
-cursor for the next page. search_markets returns a single page; refine q or add filters instead of
-paging. list_categories and list_tags return a single capped list of the most popular values,
-ordered by frequency. If truncated is true, raise limit (maximum 100); do not page, and do not
-expect rare tags. get_event returns at most 50 markets ordered by strike_order. If truncated is
-true, continue with browse_markets using event_ticker=[that ticker] and follow next_cursor.
-Browse is not strike-ordered and may overlap the returned slice; dedupe by ticker, then compare
-strike_order.
+cursor for the next page. browse_markets page size defaults to 8 (maximum 20). search_markets
+returns a single page; refine q or add filters instead of paging. list_categories and list_tags
+return a single capped list of the most popular values, ordered by frequency. If truncated is true,
+raise limit (maximum 100); do not page, and do not expect rare tags. get_event returns at most 50
+markets ordered by strike_order. If truncated is true, continue with browse_markets using
+event_ticker=[that ticker] and follow next_cursor. Browse is not strike-ordered and may overlap the
+returned slice; dedupe by ticker, then compare strike_order.
 Prices are in dollars in [0, 1]. yes_ask_price is the best YES sell offer; yes_bid_price is the best YES buy offer. A YES ask plus the corresponding NO bid equals 1.0. Compact hits include yes_ask_size and yes_bid_size.
-Keyword filters are lists (OR within a field). Range filters are inclusive.
+Keyword filters are lists (OR within a field). Pass tags_mode=all to require every tag.
+Range filters are inclusive.
 search_markets requires embeddings on the upstream API and fails if they are not configured.
 """
 
@@ -113,9 +114,10 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         resolution rules. All returned markets are open.
 
         Args:
-            params: Filters plus page size and optional cursor. Keyword list filters are OR'd
-                within a field. Range filters (`*_gte` / `*_lte`) are inclusive. Pass
-                `next_cursor` from the previous page as `cursor`. Omit `cursor` for the first page.
+            params: Filters plus page size (default 8, maximum 20) and optional cursor. Keyword
+                list filters are OR'd within a field; pass `tags_mode=all` to require every tag.
+                Range filters (`*_gte` / `*_lte`) are inclusive. Pass `next_cursor` from the
+                previous page as `cursor`. Omit `cursor` for the first page.
 
         Returns:
             A page of compact market hits (`items`, `next_cursor`, `limit`). Follow `next_cursor`
@@ -137,7 +139,8 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
 
         Args:
             params: Required `q` plus optional filters and `limit` (default 8, maximum 20).
-                Do not page; refine `q` or add filters for more results.
+                Keyword list filters are OR'd within a field; pass `tags_mode=all` to require
+                every tag. Do not page; refine `q` or add filters for more results.
 
         Returns:
             Compact market hits, nearest neighbors first. A single page; `next_cursor` is
@@ -268,6 +271,14 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
     async def health(_request: Request) -> JSONResponse:
         return JSONResponse({"status": "ok"})
 
+    @mcp.custom_route("/ready", methods=["GET"])
+    async def ready(_request: Request) -> JSONResponse:
+        try:
+            status = await api_client.ready()
+        except OpenhedgeApiError as exc:
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+        return JSONResponse(status.model_dump())
+
     return mcp
 
 
@@ -275,7 +286,7 @@ async def _call_api(method: Callable[..., Awaitable[T]], *args: object) -> T:
     try:
         return await method(*args)
     except OpenhedgeApiError as exc:
-        raise ToolError(exc.detail) from exc
+        raise ToolError(str(exc)) from exc
 
 
 def main() -> None:

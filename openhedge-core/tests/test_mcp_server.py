@@ -12,6 +12,7 @@ from openhedge_core.server import (
     MarketListParams,
     MarketPage,
     MarketSearchParams,
+    ReadyStatus,
     VocabList,
     VocabListParams,
 )
@@ -62,6 +63,12 @@ class FakeApiClient:
         self.markets: dict[str, Market] = {}
         self.events: dict[str, Event] = {}
         self.errors: dict[str, OpenhedgeApiError] = {}
+        self.ready_result = ReadyStatus(status="ok", qdrant="ok", embedder="ok")
+
+    async def ready(self) -> ReadyStatus:
+        if "ready" in self.errors:
+            raise self.errors["ready"]
+        return self.ready_result
 
     async def browse_markets(self, params: MarketListParams) -> MarketPage:
         self.browse_calls.append(params)
@@ -157,6 +164,8 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "cursor" in _param_properties(browse_schema)
     assert "numeric offset" not in INSTRUCTIONS.lower()
     assert "category" in _schema_text(browse_schema)
+    assert "tags_mode" in _schema_text(browse_schema)
+    assert "tags_mode" in _schema_text(search_schema)
     assert "yes_ask_price_gte" in _schema_text(browse_schema)
     assert "dollars" in _schema_text(browse_schema)
     assert "ticker" in _schema_text(get_market_schema)
@@ -203,7 +212,7 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "substring" not in (by_name["list_tags"].description or "").lower()
     assert "full set" not in INSTRUCTIONS.lower()
     assert "substring" not in INSTRUCTIONS.lower()
-    assert "list_tags" in INSTRUCTIONS
+    assert "tags_mode=all" in INSTRUCTIONS
     hedge_description = (by_name["hedge"].description or "").lower()
     assert "ticker" in hedge_description
     assert "search_markets" in hedge_description
@@ -233,6 +242,41 @@ async def test_browse_markets_forwards_params() -> None:
 
 
 @pytest.mark.asyncio
+async def test_browse_markets_forwards_tags_mode() -> None:
+    api = FakeApiClient()
+    api.browse_result = MarketPage(items=[], next_cursor=None, limit=8)
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        await client.call_tool(
+            "browse_markets",
+            {"params": {"tags": ["climate", "energy"], "tags_mode": "all"}},
+        )
+    assert api.browse_calls[0].tags == ["climate", "energy"]
+    assert api.browse_calls[0].tags_mode == "all"
+
+
+@pytest.mark.asyncio
+async def test_browse_markets_defaults_limit() -> None:
+    api = FakeApiClient()
+    api.browse_result = MarketPage(items=[], next_cursor=None, limit=8)
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        await client.call_tool("browse_markets", {"params": {}})
+    assert len(api.browse_calls) == 1
+    assert api.browse_calls[0].limit == 8
+
+
+@pytest.mark.asyncio
+async def test_browse_markets_rejects_limit_above_max() -> None:
+    api = FakeApiClient()
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        with pytest.raises(Exception, match="20"):
+            await client.call_tool("browse_markets", {"params": {"limit": 21}})
+    assert api.browse_calls == []
+
+
+@pytest.mark.asyncio
 async def test_search_markets_forwards_query() -> None:
     api = FakeApiClient()
     market = _market(ticker="MKT-0")
@@ -248,6 +292,21 @@ async def test_search_markets_forwards_query() -> None:
     page = MarketPage.model_validate(result.structured_content)
     assert page.items[0].ticker == "MKT-0"
     assert page.next_cursor is None
+
+
+@pytest.mark.asyncio
+async def test_search_markets_forwards_tags_mode() -> None:
+    api = FakeApiClient()
+    market = _market(ticker="MKT-0")
+    api.search_result = MarketPage(items=[market], next_cursor=None, limit=2)
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        await client.call_tool(
+            "search_markets",
+            {"params": {"q": "oil", "tags": ["climate", "energy"], "tags_mode": "all"}},
+        )
+    assert api.search_calls[0].tags == ["climate", "energy"]
+    assert api.search_calls[0].tags_mode == "all"
 
 
 @pytest.mark.asyncio
@@ -306,7 +365,7 @@ async def test_get_market_missing_is_tool_error() -> None:
     api.errors["MISSING"] = OpenhedgeApiError(404, "market not found")
     mcp = create_mcp(api_client=api)
     async with Client(mcp) as client:
-        with pytest.raises(ToolError, match="market not found"):
+        with pytest.raises(ToolError, match=r"404: market not found"):
             await client.call_tool("get_market", {"ticker": "MISSING"})
 
 
@@ -316,7 +375,7 @@ async def test_search_unavailable_is_tool_error() -> None:
     api.errors["search"] = OpenhedgeApiError(503, "search is unavailable: embeddings are not configured")
     mcp = create_mcp(api_client=api)
     async with Client(mcp) as client:
-        with pytest.raises(ToolError, match="embeddings are not configured"):
+        with pytest.raises(ToolError, match=r"503: search is unavailable: embeddings are not configured"):
             await client.call_tool("search_markets", {"params": {"q": "oil"}})
 
 
@@ -354,7 +413,7 @@ async def test_hedge_missing_ticker_is_tool_error() -> None:
     api.errors["MISSING"] = OpenhedgeApiError(404, "market not found")
     mcp = create_mcp(api_client=api)
     async with Client(mcp) as client:
-        with pytest.raises(ToolError, match="market not found"):
+        with pytest.raises(ToolError, match=r"404: market not found"):
             await client.call_tool("hedge", {"params": {"legs": [{"ticker": "MISSING"}]}})
 
 
@@ -389,3 +448,26 @@ async def test_health_route() -> None:
         response = await client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_ready_route_proxies_upstream() -> None:
+    api = FakeApiClient()
+    mcp = create_mcp(api_client=api)
+    app = mcp.http_app(stateless_http=True)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/ready")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "qdrant": "ok", "embedder": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_ready_route_returns_upstream_error() -> None:
+    api = FakeApiClient()
+    api.errors["ready"] = OpenhedgeApiError(503, "not ready")
+    mcp = create_mcp(api_client=api)
+    app = mcp.http_app(stateless_http=True)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/ready")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "not ready"}

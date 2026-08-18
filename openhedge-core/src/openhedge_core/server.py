@@ -5,9 +5,9 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Any, Literal
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from openrouter import OpenRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from qdrant_client import AsyncQdrantClient
 
 from openhedge_core.embeddings import (
@@ -27,8 +27,8 @@ from openhedge_core.vector_store import (
 
 DEFAULT_OPENROUTER_HTTP_REFERER = "https://openhedge.dev"
 DEFAULT_OPENROUTER_APP_TITLE = "openhedge"
-DEFAULT_PAGE_LIMIT = 20
-MAX_PAGE_LIMIT = 100
+DEFAULT_PAGE_LIMIT = 8
+MAX_PAGE_LIMIT = 20
 DEFAULT_SEARCH_LIMIT = 8
 MAX_SEARCH_LIMIT = 20
 EVENT_SCROLL_PAGE_SIZE = 100
@@ -50,7 +50,7 @@ class MarketListParams(MarketFilters):
         default=DEFAULT_PAGE_LIMIT,
         ge=1,
         le=MAX_PAGE_LIMIT,
-        description="Page size. Defaults to 20, maximum 100.",
+        description="Page size. Defaults to 8, maximum 20.",
     )
     cursor: str | None = Field(
         default=None,
@@ -88,6 +88,12 @@ class VocabList(BaseModel):
     limit: int
 
 
+class ReadyStatus(BaseModel):
+    status: str
+    qdrant: str
+    embedder: str
+
+
 def create_app(*, store: VectorStore | None = None, embedder: EmbeddingClient | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -106,7 +112,7 @@ def create_app(*, store: VectorStore | None = None, embedder: EmbeddingClient | 
             )
             api_key = os.environ.get("OPENROUTER_API_KEY")
             if not api_key:
-                logger.warning("OPENROUTER_API_KEY is not set; /search will return 503")
+                logger.warning("OPENROUTER_API_KEY is not set; /v1/search will return 503")
                 app.state.embedder = None
                 yield
                 return
@@ -131,17 +137,35 @@ def create_app(*, store: VectorStore | None = None, embedder: EmbeddingClient | 
         app.state.store = store
         app.state.embedder = embedder
     app.add_api_route("/health", health, methods=["GET"])
-    app.add_api_route("/markets", browse_markets, methods=["GET"], response_model=MarketPage)
-    app.add_api_route("/markets/{ticker}", get_market, methods=["GET"], response_model=Market)
-    app.add_api_route("/events/{event_ticker}", get_event, methods=["GET"], response_model=Event)
-    app.add_api_route("/search", search_markets, methods=["POST"], response_model=MarketPage)
-    app.add_api_route("/categories", list_categories, methods=["GET"], response_model=VocabList)
-    app.add_api_route("/tags", list_tags, methods=["GET"], response_model=VocabList)
+    app.add_api_route("/ready", ready, methods=["GET"], response_model=ReadyStatus)
+    v1 = APIRouter(prefix="/v1")
+    v1.add_api_route("/markets", browse_markets, methods=["GET"], response_model=MarketPage)
+    v1.add_api_route("/markets/{ticker}", get_market, methods=["GET"], response_model=Market)
+    v1.add_api_route("/events/{event_ticker}", get_event, methods=["GET"], response_model=Event)
+    v1.add_api_route("/search", search_markets, methods=["POST"], response_model=MarketPage)
+    v1.add_api_route("/categories", list_categories, methods=["GET"], response_model=VocabList)
+    v1.add_api_route("/tags", list_tags, methods=["GET"], response_model=VocabList)
+    app.include_router(v1)
     return app
 
 
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+async def ready(request: Request) -> ReadyStatus:
+    store: VectorStore = request.app.state.store
+    try:
+        await store.ready()
+    except Exception:
+        logger.exception("readiness check failed")
+        raise HTTPException(status_code=503, detail="not ready") from None
+    embedder: EmbeddingClient | None = request.app.state.embedder
+    return ReadyStatus(
+        status="ok",
+        qdrant="ok",
+        embedder="ok" if embedder is not None else "unconfigured",
+    )
 
 
 async def browse_markets(
@@ -156,7 +180,7 @@ async def browse_markets(
         payload_fields=MARKET_SUMMARY_PAYLOAD_FIELDS,
     )
     return MarketPage(
-        items=[MarketSummary.model_validate(payload) for payload in payloads],
+        items=_market_summaries(payloads),
         next_cursor=next_cursor,
         limit=params.limit,
     )
@@ -182,7 +206,7 @@ async def search_markets(
         payload_fields=MARKET_SUMMARY_PAYLOAD_FIELDS,
     )
     return MarketPage(
-        items=[MarketSummary.model_validate(payload) for payload in payloads],
+        items=_market_summaries(payloads),
         next_cursor=None,
         limit=params.limit,
     )
@@ -211,9 +235,9 @@ async def get_event(request: Request, event_ticker: str) -> Event:
         payloads.extend(page)
         if cursor is None:
             break
-    if not payloads:
+    markets = _market_summaries(payloads)
+    if not markets:
         raise HTTPException(status_code=404, detail="event not found")
-    markets = [MarketSummary.model_validate(payload) for payload in payloads]
     return Event.from_markets(markets, limit=MAX_EVENT_MARKETS)
 
 
@@ -240,6 +264,17 @@ async def _list_vocab(
     return VocabList(items=values, truncated=len(values) == params.limit, limit=params.limit)
 
 
+def _market_summaries(payloads: list[dict[str, Any]]) -> list[MarketSummary]:
+    items: list[MarketSummary] = []
+    for payload in payloads:
+        try:
+            items.append(MarketSummary.model_validate(payload))
+        except ValidationError as exc:
+            ticker = payload.get("ticker")
+            logger.warning("skipping invalid market payload ticker=%s: %s", ticker, exc)
+    return items
+
+
 app = create_app()
 
 
@@ -250,7 +285,7 @@ def main() -> None:
     )
     uvicorn.run(
         app,
-        host=os.environ.get("API_HOST", "0.0.0.0"),
+        host=os.environ.get("API_HOST", "127.0.0.1"),
         port=int(os.environ.get("API_PORT", "8000")),
     )
 
