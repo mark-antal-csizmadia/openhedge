@@ -259,8 +259,9 @@ async def _list_vocab(
     field: Literal["category", "tags"],
     params: VocabListParams,
 ) -> VocabList:
-    values = await store.facet_values(field, limit=params.limit)
-    return VocabList(items=values, truncated=len(values) == params.limit, limit=params.limit)
+    values = await store.facet_values(field, limit=params.limit + 1)
+    truncated = len(values) > params.limit
+    return VocabList(items=values[: params.limit], truncated=truncated, limit=params.limit)
 
 
 def _market_summaries(payloads: list[dict[str, Any]]) -> list[MarketSummary]:
