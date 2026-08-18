@@ -1,4 +1,3 @@
-from collections.abc import Sequence
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -7,7 +6,6 @@ from openhedge_core.types.market import Market
 
 HedgeSide = Literal["yes", "no"]
 
-MAX_HEDGE_LEGS = 20
 CONTRACT_PRECISION = 2
 UNIT_PAYOUT_DOLLARS = 1.0
 
@@ -31,8 +29,9 @@ Buying YES at price `P` is the same exposure as selling NO at `1 - P` (ignoring 
 ## How `hedge` sizes a position
 
 Discovery is not part of this tool. The agent chooses markets with `search_markets`,
-`browse_markets`, and `get_event`, then passes `{ticker, side}` legs. `hedge` fetches each
+`browse_markets`, and `get_event`, then calls `hedge` once per ticker. `hedge` fetches that
 ticker and sizes a **buy** of that side at the current best ask (not a custom limit price).
+Agents may call `hedge` in parallel for several tickers.
 
 - YES: `price = yes_ask_price`, `available_size = yes_ask_size`
 - NO: `price = 1 - yes_bid_price`, `available_size = yes_bid_size`
@@ -46,7 +45,7 @@ If `estimated_hit_dollars` is set:
 - `net_if_pays = estimated_hit_dollars - gross_payout - premium`
 - `net_if_expires = -premium`
 
-Each leg is sized independently against the full hit. Overlapping contracts (same event,
+Each call is sized independently against the full hit. Overlapping contracts (same event,
 several strikes) can overstate coverage.
 
 If no dollar hit is given, the same formulas run with `target_payout = $1` (unit economics)
@@ -64,12 +63,12 @@ proxy. Prefer an honest gap over a forced proxy. Basis risk (for example hedging
 with a crude-oil strike) must be stated explicitly. Do not call `hedge` until the set is
 worth sizing.
 
-openhedge does not place orders. Send the user to `market.url` on the source venue.
+openhedge does not place orders. Send the user to `url` on the source venue.
 """
 
 
-class HedgeLeg(BaseModel):
-    """One market the agent chose to size as a hedge."""
+class HedgeParams(BaseModel):
+    """Inputs for sizing a cash-flow hedge on one market the agent already chose."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -82,21 +81,6 @@ class HedgeLeg(BaseModel):
         description=(
             "Contract side to buy: the side that pays $1 if the adverse outcome occurs. "
             "Default yes. Use no when this market's NO resolution is the hedge."
-        ),
-    )
-
-
-class HedgeParams(BaseModel):
-    """Inputs for sizing cash-flow hedges on markets the agent already chose."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    legs: list[HedgeLeg] = Field(
-        min_length=1,
-        max_length=MAX_HEDGE_LEGS,
-        description=(
-            "Markets to size, each with a ticker and side. Collect these with search_markets, "
-            f"browse_markets, or get_event first. Maximum {MAX_HEDGE_LEGS} legs."
         ),
     )
     estimated_hit_dollars: float | None = Field(
@@ -121,7 +105,9 @@ class HedgeParams(BaseModel):
 class HedgeCandidate(BaseModel):
     """One chosen market sized as a binary cash-flow hedge."""
 
-    market: Market
+    ticker: str = Field(description="Market primary key.")
+    url: str = Field(description="Canonical URL of the market on the source platform.")
+    question: str = Field(description="Question of the market.")
     side: HedgeSide = Field(description="Side bought: yes or no.")
     price_per_contract: float = Field(
         description="Best ask for `side` in dollars. For no, this is 1 minus yes_bid_price.",
@@ -147,23 +133,11 @@ class HedgeCandidate(BaseModel):
     )
 
 
-class HedgeResult(BaseModel):
-    """Sized hedge candidates for the supplied legs."""
-
-    estimated_hit_dollars: float | None
-    coverage: float
-    candidates: list[HedgeCandidate]
-
-
-def size_hedge(
-    market: Market,
-    *,
-    estimated_hit_dollars: float | None,
-    coverage: float,
-    side: HedgeSide,
-) -> HedgeCandidate:
-    """Size a buy of `side` on `market` from top-of-book ask and optional dollar hit."""
-    price, available_size = _ask_for_side(market, side)
+def size_hedge(market: Market, params: HedgeParams) -> HedgeCandidate:
+    """Size a buy of `params.side` on `market` from top-of-book ask and optional dollar hit."""
+    price, available_size = _ask_for_side(market, params.side)
+    estimated_hit_dollars = params.estimated_hit_dollars
+    coverage = params.coverage
     target_payout = estimated_hit_dollars * coverage if estimated_hit_dollars is not None else UNIT_PAYOUT_DOLLARS
     unconstrained = round(target_payout, CONTRACT_PRECISION)
     contracts = min(unconstrained, round(available_size, CONTRACT_PRECISION))
@@ -175,8 +149,10 @@ def size_hedge(
         net_if_pays = round(estimated_hit_dollars - gross_payout - premium, CONTRACT_PRECISION)
         net_if_expires = round(-premium, CONTRACT_PRECISION)
     return HedgeCandidate(
-        market=market,
-        side=side,
+        ticker=market.ticker,
+        url=market.url,
+        question=market.question,
+        side=params.side,
         price_per_contract=round(price, CONTRACT_PRECISION),
         available_size=round(available_size, CONTRACT_PRECISION),
         contracts=contracts,
@@ -185,23 +161,6 @@ def size_hedge(
         net_if_pays=net_if_pays,
         net_if_expires=net_if_expires,
         liquidity_constrained=available_size < unconstrained,
-    )
-
-
-def size_hedges(markets_and_sides: Sequence[tuple[Market, HedgeSide]], params: HedgeParams) -> HedgeResult:
-    """Size each (market, side) pair with `params`."""
-    return HedgeResult(
-        estimated_hit_dollars=params.estimated_hit_dollars,
-        coverage=params.coverage,
-        candidates=[
-            size_hedge(
-                market,
-                estimated_hit_dollars=params.estimated_hit_dollars,
-                coverage=params.coverage,
-                side=side,
-            )
-            for market, side in markets_and_sides
-        ],
     )
 
 

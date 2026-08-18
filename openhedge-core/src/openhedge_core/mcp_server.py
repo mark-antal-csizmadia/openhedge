@@ -12,7 +12,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from openhedge_core.api_client import MarketApi, OpenhedgeApiClient, OpenhedgeApiError
-from openhedge_core.hedge import HEDGE_MATH_MARKDOWN, HedgeParams, HedgeResult, size_hedges
+from openhedge_core.hedge import HEDGE_MATH_MARKDOWN, HedgeCandidate, HedgeParams, HedgeSide, size_hedge
 from openhedge_core.server import MarketListParams, MarketPage, MarketSearchParams, VocabList, VocabListParams
 from openhedge_core.types.market import Event, Market
 
@@ -45,10 +45,10 @@ Workflow:
    may overlap the returned slice — dedupe by ticker, then compare strike_order. Call
    get_market on shortlisted tickers and read description (resolution rules); drop poor
    proxies. If none map cleanly, say none fits.
-3. Use hedge only after you have chosen tickers and read their rules via get_market. Pass
-   legs as {ticker, side} plus optional estimated_hit_dollars. hedge fetches those markets
-   and sizes a cash-flow hedge; it does not search. Link the user to each candidate's
-   market.url.
+3. Use hedge only after you have chosen tickers and read their rules via get_market. Call
+   hedge once per kept ticker with that ticker, side, and optional estimated_hit_dollars.
+   You may call hedge in parallel. hedge fetches that market and sizes a cash-flow hedge;
+   it does not search. Link the user to each candidate's url.
 4. Use get_market to fetch the full record for one ticker, including description.
 
 Honesty: search returns nearest neighbors, not guaranteed hedges. State basis risk explicitly.
@@ -80,29 +80,76 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
     mcp = FastMCP("openhedge", instructions=INSTRUCTIONS, lifespan=lifespan)
 
     @mcp.tool(title="Hedge a risk", annotations=_READ_ONLY_TOOL)
-    async def hedge(params: HedgeParams) -> HedgeResult:
-        """Size event-contract hedges on markets you already chose.
+    async def hedge(
+        ticker: Annotated[
+            str,
+            Field(
+                min_length=1,
+                description="Market primary key from search_markets, browse_markets, or get_event.",
+            ),
+        ],
+        side: Annotated[
+            HedgeSide,
+            Field(
+                description=(
+                    "Contract side to buy: the side that pays $1 if the adverse outcome occurs. "
+                    "Default yes. Use no when this market's NO resolution is the hedge."
+                ),
+            ),
+        ] = "yes",
+        estimated_hit_dollars: Annotated[
+            float | None,
+            Field(
+                gt=0,
+                description=(
+                    "Modeled dollar loss if the adverse event happens. Omit to get unit economics "
+                    "(contracts sized for $1 of payout) without residual P&L."
+                ),
+            ),
+        ] = None,
+        coverage: Annotated[
+            float,
+            Field(
+                gt=0,
+                le=1,
+                description=(
+                    "Fraction of estimated_hit_dollars to target as gross Kalshi payout. "
+                    "Ignored for the target when no hit is given. Defaults to 1.0 (full offset)."
+                ),
+            ),
+        ] = 1.0,
+    ) -> HedgeCandidate:
+        """Size an event-contract hedge on one market you already chose.
 
         Use this after search_markets, browse_markets, or get_event, and after get_market
-        on each ticker so you have read the resolution rules. Do not use this to look up markets.
+        on this ticker so you have read the resolution rules. Do not use this to look up
+        markets. Call once per kept ticker; you may call hedge in parallel.
 
-        For each leg it fetches the ticker and sizes a buy of that side at the current best
-        ask. Each candidate includes premium, gross $1 payout, residual P&L when a dollar hit
-        is given, and whether top-of-book size capped the position. Legs are sized independently.
-        It does not place orders; send the user to market.url.
+        It fetches the ticker and sizes a buy of that side at the current best ask. The
+        candidate includes premium, gross $1 payout, residual P&L when a dollar hit is
+        given, and whether top-of-book size capped the position. Calls are sized
+        independently. It does not place orders; send the user to url.
 
         Args:
-            params: Required `legs` (`ticker` plus `side`, default yes) and optional
-                `estimated_hit_dollars` and `coverage`.
+            ticker: Market primary key.
+            side: Side to buy; default yes.
+            estimated_hit_dollars: Optional modeled dollar loss.
+            coverage: Fraction of the hit to target; default 1.0.
 
         Returns:
-            Sizing inputs and a list of sized `candidates` in leg order.
+            One sized candidate (`ticker`, `url`, `question`, and sizing numbers).
 
         Raises:
-            ToolError: If a ticker is missing (upstream 404) or `legs` is empty (422).
+            ToolError: If the ticker is missing (upstream 404).
         """
-        markets_and_sides = [(await _call_api(api_client.get_market, leg.ticker), leg.side) for leg in params.legs]
-        return size_hedges(markets_and_sides, params)
+        params = HedgeParams(
+            ticker=ticker,
+            side=side,
+            estimated_hit_dollars=estimated_hit_dollars,
+            coverage=coverage,
+        )
+        market = await _call_api(api_client.get_market, params.ticker)
+        return size_hedge(market, params)
 
     @mcp.tool(title="Browse markets", annotations=_READ_ONLY_TOOL)
     async def browse_markets(params: MarketListParams) -> MarketPage:
@@ -159,8 +206,7 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
 
         Use after search_markets, browse_markets, or get_event when you need the full record:
         question, resolution rules (`description`), yes/no outcomes, ask/bid prices and sizes,
-        volume, and the canonical platform URL. List and event tools omit description. hedge
-        fetches this itself for each sized leg.
+        volume, and the canonical platform URL. List and event tools omit description.
 
         Args:
             ticker: Market primary key, typically taken from a previous page item.
@@ -252,13 +298,13 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
             "and description (resolution rules). Keep only clean proxies. State basis risk "
             "explicitly. Do not force a match; if none fits, stop and say so. Do not call "
             "hedge yet.\n"
-            "3. Call hedge with legs as {{ticker, side}} for the kept markets. Default side "
-            "is yes; use no when that market's NO resolution is the hedge. If they gave a "
-            "dollar loss, pass estimated_hit_dollars.\n"
+            "3. Call hedge once per kept ticker. Default side is yes; use no when that "
+            "market's NO resolution is the hedge. If they gave a dollar loss, pass the same "
+            "estimated_hit_dollars on each call. You may call hedge in parallel.\n"
             "4. Present premium_dollars, gross_payout_dollars, and residual "
-            "(net_if_pays / net_if_expires). Flag liquidity_constrained positions. Legs are "
+            "(net_if_pays / net_if_expires). Flag liquidity_constrained positions. Calls are "
             "sized independently; overlapping contracts can overstate coverage.\n"
-            "5. Link market.url. openhedge does not execute trades.\n"
+            "5. Link url. openhedge does not execute trades.\n"
             "Read resource openhedge://docs/hedge-math if you need the settlement formulas."
         )
 

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import pytest
-from openhedge_core.hedge import HedgeLeg, HedgeParams, size_hedge, size_hedges
+from openhedge_core.hedge import HedgeParams, size_hedge
 from openhedge_core.types.market import Market, MarketSource
 
 
@@ -39,10 +39,13 @@ def test_size_hedge_yes_full_coverage() -> None:
     market = _market(ticker="MKT-1")
     candidate = size_hedge(
         market,
-        estimated_hit_dollars=100.0,
-        coverage=1.0,
-        side="yes",
+        HedgeParams(ticker=market.ticker, estimated_hit_dollars=100.0, coverage=1.0, side="yes"),
     )
+    assert candidate.ticker == "MKT-1"
+    assert candidate.url == market.url
+    assert candidate.question == "Active market"
+    assert "description" not in candidate.model_dump()
+    assert "market" not in candidate.model_dump()
     assert candidate.side == "yes"
     assert candidate.price_per_contract == pytest.approx(0.4)
     assert candidate.available_size == pytest.approx(1000.0)
@@ -58,9 +61,7 @@ def test_size_hedge_applies_coverage() -> None:
     market = _market(ticker="MKT-1")
     candidate = size_hedge(
         market,
-        estimated_hit_dollars=100.0,
-        coverage=0.9,
-        side="yes",
+        HedgeParams(ticker=market.ticker, estimated_hit_dollars=100.0, coverage=0.9, side="yes"),
     )
     assert candidate.contracts == pytest.approx(90.0)
     assert candidate.premium_dollars == pytest.approx(36.0)
@@ -73,9 +74,7 @@ def test_size_hedge_caps_at_available_size() -> None:
     market = _market(ticker="MKT-1", yes_ask_size=10.0)
     candidate = size_hedge(
         market,
-        estimated_hit_dollars=100.0,
-        coverage=1.0,
-        side="yes",
+        HedgeParams(ticker=market.ticker, estimated_hit_dollars=100.0, coverage=1.0, side="yes"),
     )
     assert candidate.contracts == pytest.approx(10.0)
     assert candidate.premium_dollars == pytest.approx(4.0)
@@ -88,9 +87,7 @@ def test_size_hedge_no_side_uses_complement_ask() -> None:
     market = _market(ticker="MKT-1")
     candidate = size_hedge(
         market,
-        estimated_hit_dollars=10.0,
-        coverage=1.0,
-        side="no",
+        HedgeParams(ticker=market.ticker, estimated_hit_dollars=10.0, coverage=1.0, side="no"),
     )
     assert candidate.side == "no"
     assert candidate.price_per_contract == pytest.approx(0.65)
@@ -105,12 +102,7 @@ def test_size_hedge_no_side_uses_complement_ask() -> None:
 
 def test_size_hedge_without_hit_is_unit_economics() -> None:
     market = _market(ticker="MKT-1")
-    candidate = size_hedge(
-        market,
-        estimated_hit_dollars=None,
-        coverage=1.0,
-        side="yes",
-    )
+    candidate = size_hedge(market, HedgeParams(ticker=market.ticker, side="yes"))
     assert candidate.contracts == pytest.approx(1.0)
     assert candidate.premium_dollars == pytest.approx(0.4)
     assert candidate.gross_payout_dollars == pytest.approx(1.0)
@@ -119,20 +111,21 @@ def test_size_hedge_without_hit_is_unit_economics() -> None:
     assert candidate.liquidity_constrained is False
 
 
-def test_size_hedges_mixed_sides() -> None:
+def test_size_hedge_yes_and_no_are_independent() -> None:
     yes_market = _market(ticker="MKT-0")
     no_market = _market(ticker="MKT-1", yes_ask_price=0.2, yes_bid_size=1000.0)
-    params = HedgeParams(
-        legs=[HedgeLeg(ticker="MKT-0", side="yes"), HedgeLeg(ticker="MKT-1", side="no")],
-        estimated_hit_dollars=50.0,
-        coverage=1.0,
+    yes_candidate = size_hedge(
+        yes_market,
+        HedgeParams(ticker=yes_market.ticker, estimated_hit_dollars=50.0, coverage=1.0, side="yes"),
     )
-    result = size_hedges([(yes_market, "yes"), (no_market, "no")], params)
-    assert result.estimated_hit_dollars == pytest.approx(50.0)
-    assert result.coverage == pytest.approx(1.0)
-    assert [candidate.market.ticker for candidate in result.candidates] == ["MKT-0", "MKT-1"]
-    assert result.candidates[0].side == "yes"
-    assert result.candidates[0].premium_dollars == pytest.approx(20.0)
-    assert result.candidates[1].side == "no"
-    assert result.candidates[1].price_per_contract == pytest.approx(0.65)
-    assert result.candidates[1].premium_dollars == pytest.approx(32.5)
+    no_candidate = size_hedge(
+        no_market,
+        HedgeParams(ticker=no_market.ticker, estimated_hit_dollars=50.0, coverage=1.0, side="no"),
+    )
+    assert yes_candidate.ticker == "MKT-0"
+    assert yes_candidate.side == "yes"
+    assert yes_candidate.premium_dollars == pytest.approx(20.0)
+    assert no_candidate.ticker == "MKT-1"
+    assert no_candidate.side == "no"
+    assert no_candidate.price_per_contract == pytest.approx(0.65)
+    assert no_candidate.premium_dollars == pytest.approx(32.5)

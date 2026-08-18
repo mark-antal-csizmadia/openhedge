@@ -6,7 +6,7 @@ import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from openhedge_core.api_client import OpenhedgeApiError
-from openhedge_core.hedge import HEDGE_MATH_MARKDOWN, HedgeResult
+from openhedge_core.hedge import HEDGE_MATH_MARKDOWN, HedgeCandidate
 from openhedge_core.mcp_server import INSTRUCTIONS, create_mcp
 from openhedge_core.server import (
     MarketListParams,
@@ -176,7 +176,10 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "limit" in _param_properties(list_categories_schema)
     assert "cursor" not in _param_properties(list_tags_schema)
     assert "cursor" not in _param_properties(list_categories_schema)
-    assert "legs" in _schema_text(hedge_schema)
+    hedge_props = _param_properties(hedge_schema)
+    assert "ticker" in hedge_props
+    assert "legs" not in hedge_props
+    assert "params" not in (hedge_schema.get("properties") or {})
     assert "ticker" in _schema_text(hedge_schema)
     assert "estimated_hit_dollars" in _schema_text(hedge_schema)
     assert "risk" not in _schema_text(hedge_schema)
@@ -213,6 +216,7 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "full set" not in INSTRUCTIONS.lower()
     assert "substring" not in INSTRUCTIONS.lower()
     assert "tags_mode=all" in INSTRUCTIONS
+    assert "legs" not in INSTRUCTIONS.lower()
     hedge_description = (by_name["hedge"].description or "").lower()
     assert "ticker" in hedge_description
     assert "search_markets" in hedge_description
@@ -380,7 +384,7 @@ async def test_search_unavailable_is_tool_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_hedge_fetches_legs_and_sizes() -> None:
+async def test_hedge_fetches_ticker_and_sizes() -> None:
     api = FakeApiClient()
     market = _market(ticker="MKT-0", yes_ask_price=0.4, yes_ask_size=1000.0)
     api.markets["MKT-0"] = market
@@ -389,19 +393,23 @@ async def test_hedge_fetches_legs_and_sizes() -> None:
         result = await client.call_tool(
             "hedge",
             {
-                "params": {
-                    "legs": [{"ticker": "MKT-0", "side": "yes"}],
-                    "estimated_hit_dollars": 100,
-                    "coverage": 1.0,
-                }
+                "ticker": "MKT-0",
+                "side": "yes",
+                "estimated_hit_dollars": 100,
+                "coverage": 1.0,
             },
         )
     assert api.get_market_calls == ["MKT-0"]
     assert api.search_calls == []
-    hedge = HedgeResult.model_validate(result.structured_content)
-    assert len(hedge.candidates) == 1
-    candidate = hedge.candidates[0]
-    assert candidate.market.ticker == "MKT-0"
+    payload = result.structured_content
+    assert payload is not None
+    assert "market" not in payload
+    assert "description" not in payload
+    assert "candidates" not in payload
+    candidate = HedgeCandidate.model_validate(payload)
+    assert candidate.ticker == "MKT-0"
+    assert candidate.url == market.url
+    assert candidate.question == "Active market"
     assert candidate.side == "yes"
     assert candidate.contracts == pytest.approx(100.0)
     assert candidate.premium_dollars == pytest.approx(40.0)
@@ -414,7 +422,7 @@ async def test_hedge_missing_ticker_is_tool_error() -> None:
     mcp = create_mcp(api_client=api)
     async with Client(mcp) as client:
         with pytest.raises(ToolError, match=r"404: market not found"):
-            await client.call_tool("hedge", {"params": {"legs": [{"ticker": "MISSING"}]}})
+            await client.call_tool("hedge", {"ticker": "MISSING"})
 
 
 @pytest.mark.asyncio
