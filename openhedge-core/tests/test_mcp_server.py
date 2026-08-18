@@ -186,10 +186,11 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "natural-language" in (by_name["search_markets"].description or "").lower()
     assert "strike_order" in (by_name["get_event"].description or "")
     get_event_description = (by_name["get_event"].description or "").lower()
-    assert "all of its markets" not in get_event_description
-    assert "truncated" in get_event_description
-    assert "browse_markets" in get_event_description
+    assert "all of its markets" in get_event_description
+    assert "truncated" not in get_event_description
+    assert "capped" not in get_event_description
     assert "truncated" in INSTRUCTIONS.lower()
+    assert "get_event returns all markets" in INSTRUCTIONS.lower()
     assert "browse_markets" in INSTRUCTIONS
     assert "compact" in (by_name["browse_markets"].description or "").lower()
     assert "compact" in (by_name["search_markets"].description or "").lower()
@@ -359,7 +360,6 @@ async def test_get_market_and_event() -> None:
     assert Market.model_validate(market_result.structured_content).ticker == "MKT-1"
     event = Event.model_validate(event_result.structured_content)
     assert [market.ticker for market in event.markets] == ["MKT-0", "MKT-1"]
-    assert event.truncated is False
     assert event.market_count == 2
 
 

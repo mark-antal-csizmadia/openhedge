@@ -32,7 +32,6 @@ MAX_PAGE_LIMIT = 20
 DEFAULT_SEARCH_LIMIT = 8
 MAX_SEARCH_LIMIT = 20
 EVENT_SCROLL_PAGE_SIZE = 100
-MAX_EVENT_MARKETS = 50
 DEFAULT_VOCAB_LIMIT = 20
 MAX_VOCAB_LIMIT = 100
 
@@ -238,7 +237,7 @@ async def get_event(request: Request, event_ticker: str) -> Event:
     markets = _market_summaries(payloads)
     if not markets:
         raise HTTPException(status_code=404, detail="event not found")
-    return Event.from_markets(markets, limit=MAX_EVENT_MARKETS)
+    return Event.from_markets(markets)
 
 
 async def list_categories(

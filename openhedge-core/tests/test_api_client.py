@@ -171,7 +171,6 @@ async def test_get_event_parses_payload() -> None:
 
     assert result.event_ticker == "EVT-OPEN"
     assert [market.ticker for market in result.markets] == ["MKT-0", "MKT-1"]
-    assert result.truncated is False
     assert result.market_count == 2
     assert "description" not in result.markets[0].model_dump()
 
