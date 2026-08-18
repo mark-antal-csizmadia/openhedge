@@ -104,7 +104,7 @@ class FakeVectorStore:
         *,
         limit: int,
         payload_fields: Sequence[str] | None = None,
-    ) -> list[tuple[dict[str, Any], float]]:
+    ) -> list[dict[str, Any]]:
         raise NotImplementedError
 
     async def get_payload(self, ticker: str) -> dict[str, Any] | None:

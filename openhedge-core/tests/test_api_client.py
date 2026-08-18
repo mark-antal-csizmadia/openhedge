@@ -8,7 +8,7 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 from openhedge_core.api_client import OpenhedgeApiClient, OpenhedgeApiError
-from openhedge_core.server import MarketHit, MarketListParams, MarketPage, MarketSearchParams, VocabListParams
+from openhedge_core.server import MarketListParams, MarketPage, MarketSearchParams, VocabListParams
 from openhedge_core.types.market import Event, Market, MarketSource
 
 
@@ -59,7 +59,7 @@ async def test_browse_markets_encodes_filters_and_parses_page() -> None:
         captured["path"] = request.url.path
         captured["query"] = request.url.query.decode()
         page = MarketPage(
-            items=[MarketHit(market=market)],
+            items=[market],
             next_cursor="next-page",
             limit=5,
         )
@@ -81,9 +81,8 @@ async def test_browse_markets_encodes_filters_and_parses_page() -> None:
     assert query["cursor"] == ["abc"]
     assert result.next_cursor == "next-page"
     assert result.limit == 5
-    assert result.items[0].market.ticker == "MKT-1"
-    assert result.items[0].score is None
-    assert "description" not in result.items[0].market.model_dump()
+    assert result.items[0].ticker == "MKT-1"
+    assert "description" not in result.items[0].model_dump()
 
 
 @pytest.mark.asyncio
@@ -95,7 +94,7 @@ async def test_search_markets_sends_query() -> None:
         captured["path"] = request.url.path
         captured["method"] = request.method
         captured["body"] = request.content.decode()
-        page = MarketPage(items=[MarketHit(market=market, score=0.9)], next_cursor=None, limit=2)
+        page = MarketPage(items=[market], next_cursor=None, limit=2)
         return httpx.Response(200, json=page.model_dump(mode="json"))
 
     async with api_client(handler) as client:
@@ -107,9 +106,9 @@ async def test_search_markets_sends_query() -> None:
     assert body["q"] == "oil prices"
     assert body["limit"] == 2
     assert body["tags"] == ["fed"]
-    assert result.items[0].score == pytest.approx(0.9)
+    assert result.items[0].ticker == "MKT-0"
     assert result.next_cursor is None
-    assert "description" not in result.items[0].market.model_dump()
+    assert "description" not in result.items[0].model_dump()
 
 
 @pytest.mark.asyncio

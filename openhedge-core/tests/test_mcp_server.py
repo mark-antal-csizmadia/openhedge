@@ -9,7 +9,6 @@ from openhedge_core.api_client import OpenhedgeApiError
 from openhedge_core.hedge import HEDGE_MATH_MARKDOWN, HedgeResult
 from openhedge_core.mcp_server import INSTRUCTIONS, create_mcp
 from openhedge_core.server import (
-    MarketHit,
     MarketListParams,
     MarketPage,
     MarketSearchParams,
@@ -182,6 +181,19 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "browse_markets" in INSTRUCTIONS
     assert "compact" in (by_name["browse_markets"].description or "").lower()
     assert "compact" in (by_name["search_markets"].description or "").lower()
+    search_description = (by_name["search_markets"].description or "").lower()
+    browse_description = (by_name["browse_markets"].description or "").lower()
+    assert "score" not in search_description
+    assert "score" not in browse_description
+    assert "end_datetime" in search_description
+    assert "nearest neighbors" in search_description
+    assert "end_datetime" in INSTRUCTIONS
+    assert "expired" not in search_description
+    assert "expired" not in browse_description
+    assert "expired" not in INSTRUCTIONS.lower()
+    assert "all returned markets are open" in search_description
+    assert "all returned markets are open" in browse_description
+    assert "all returned markets are open" in INSTRUCTIONS.lower()
     assert "compact" in (by_name["get_event"].description or "").lower()
     assert "description" in (by_name["get_market"].description or "").lower()
     assert "category" in (by_name["list_categories"].description or "").lower()
@@ -202,7 +214,7 @@ async def test_list_tools_documents_api_surface() -> None:
 async def test_browse_markets_forwards_params() -> None:
     api = FakeApiClient()
     market = _market(ticker="MKT-1")
-    api.browse_result = MarketPage(items=[MarketHit(market=market)], next_cursor="next-page", limit=5)
+    api.browse_result = MarketPage(items=[market], next_cursor="next-page", limit=5)
     mcp = create_mcp(api_client=api)
     async with Client(mcp) as client:
         result = await client.call_tool(
@@ -217,14 +229,14 @@ async def test_browse_markets_forwards_params() -> None:
     assert call.cursor == "abc"
     page = MarketPage.model_validate(result.structured_content)
     assert page.next_cursor == "next-page"
-    assert page.items[0].market.ticker == "MKT-1"
+    assert page.items[0].ticker == "MKT-1"
 
 
 @pytest.mark.asyncio
 async def test_search_markets_forwards_query() -> None:
     api = FakeApiClient()
     market = _market(ticker="MKT-0")
-    api.search_result = MarketPage(items=[MarketHit(market=market, score=0.9)], next_cursor=None, limit=2)
+    api.search_result = MarketPage(items=[market], next_cursor=None, limit=2)
     mcp = create_mcp(api_client=api)
     async with Client(mcp) as client:
         result = await client.call_tool(
@@ -234,7 +246,7 @@ async def test_search_markets_forwards_query() -> None:
     assert api.search_calls[0].q == "oil prices"
     assert api.search_calls[0].tags == ["fed"]
     page = MarketPage.model_validate(result.structured_content)
-    assert page.items[0].score == pytest.approx(0.9)
+    assert page.items[0].ticker == "MKT-0"
     assert page.next_cursor is None
 
 

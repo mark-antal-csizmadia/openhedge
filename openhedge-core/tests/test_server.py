@@ -73,7 +73,7 @@ class FakeSearchStore:
         self.query_calls: list[dict[str, Any]] = []
         self.get_payload_calls: list[str] = []
         self.scroll_result: tuple[list[dict[str, Any]], str | None] = ([], None)
-        self.query_result: list[tuple[dict[str, Any], float]] = []
+        self.query_result: list[dict[str, Any]] = []
         self.payloads: dict[str, dict[str, Any]] = {}
         self.facet_calls: list[dict[str, Any]] = []
         self.facet_result: dict[str, list[str]] = {}
@@ -113,7 +113,7 @@ class FakeSearchStore:
         *,
         limit: int,
         payload_fields: Sequence[str] | None = None,
-    ) -> list[tuple[dict[str, Any], float]]:
+    ) -> list[dict[str, Any]]:
         self.query_calls.append(
             {
                 "vector": list(vector),
@@ -182,9 +182,9 @@ async def test_browse_returns_page_and_forwards_filters() -> None:
     body = response.json()
     assert body["limit"] == 5
     assert body["next_cursor"] == "next-page"
-    assert body["items"][0]["market"]["ticker"] == "MKT-1"
-    assert body["items"][0]["score"] is None
-    _assert_compact_market(body["items"][0]["market"])
+    assert body["items"][0]["ticker"] == "MKT-1"
+    assert "score" not in body["items"][0]
+    _assert_compact_market(body["items"][0])
     assert len(store.scroll_calls) == 1
     call = store.scroll_calls[0]
     assert call["limit"] == 5
@@ -201,7 +201,7 @@ async def test_search_embeds_query_and_returns_neighbors() -> None:
     store = FakeSearchStore()
     embedder = RecordingEmbedder([1.0, 0.0, 0.0])
     markets = [_market(ticker=f"MKT-{i}") for i in range(3)]
-    store.query_result = [(market.payload(), 0.9 - i * 0.1) for i, market in enumerate(markets)]
+    store.query_result = [market.payload() for market in markets]
     async with api_client(store, embedder) as client:
         response = await client.post("/search", json={"q": "oil prices", "limit": 2, "tags": ["fed"]})
     assert response.status_code == 200
@@ -209,9 +209,9 @@ async def test_search_embeds_query_and_returns_neighbors() -> None:
     assert embedder.calls == [["oil prices"]]
     assert body["limit"] == 2
     assert body["next_cursor"] is None
-    assert [item["market"]["ticker"] for item in body["items"]] == ["MKT-0", "MKT-1", "MKT-2"]
-    assert body["items"][0]["score"] == pytest.approx(0.9)
-    _assert_compact_market(body["items"][0]["market"])
+    assert [item["ticker"] for item in body["items"]] == ["MKT-0", "MKT-1", "MKT-2"]
+    assert "score" not in body["items"][0]
+    _assert_compact_market(body["items"][0])
     assert len(store.query_calls) == 1
     call = store.query_calls[0]
     assert call["vector"] == [1.0, 0.0, 0.0]
