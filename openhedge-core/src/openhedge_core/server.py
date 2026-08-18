@@ -32,6 +32,7 @@ MAX_PAGE_LIMIT = 100
 DEFAULT_SEARCH_LIMIT = 8
 MAX_SEARCH_LIMIT = 20
 EVENT_SCROLL_PAGE_SIZE = 100
+MAX_EVENT_MARKETS = 50
 CATEGORY_FACET_LIMIT = 100
 TAG_FACET_SCAN_LIMIT = 1000
 DEFAULT_TAG_LIMIT = 20
@@ -220,7 +221,7 @@ async def get_event(request: Request, event_ticker: str) -> Event:
     if not payloads:
         raise HTTPException(status_code=404, detail="event not found")
     markets = [MarketSummary.model_validate(payload) for payload in payloads]
-    return Event.from_markets(markets)
+    return Event.from_markets(markets, limit=MAX_EVENT_MARKETS)
 
 
 async def list_categories(request: Request) -> VocabList:
