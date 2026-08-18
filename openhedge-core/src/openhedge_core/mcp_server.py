@@ -64,7 +64,8 @@ markets ordered by strike_order. If truncated is true, continue with browse_mark
 event_ticker=[that ticker] and follow next_cursor. Browse is not strike-ordered and may overlap the
 returned slice; dedupe by ticker, then compare strike_order.
 Prices are in dollars in [0, 1]. yes_ask_price is the best YES sell offer; yes_bid_price is the best YES buy offer. A YES ask plus the corresponding NO bid equals 1.0. Compact hits include yes_ask_size and yes_bid_size.
-Keyword filters are lists (OR within a field). Range filters are inclusive.
+Keyword filters are lists (OR within a field). Pass tags_mode=all to require every tag.
+Range filters are inclusive.
 search_markets requires embeddings on the upstream API and fails if they are not configured.
 """
 
@@ -114,9 +115,9 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
 
         Args:
             params: Filters plus page size (default 8, maximum 20) and optional cursor. Keyword
-                list filters are OR'd within a field. Range filters (`*_gte` / `*_lte`) are
-                inclusive. Pass `next_cursor` from the previous page as `cursor`. Omit `cursor`
-                for the first page.
+                list filters are OR'd within a field; pass `tags_mode=all` to require every tag.
+                Range filters (`*_gte` / `*_lte`) are inclusive. Pass `next_cursor` from the
+                previous page as `cursor`. Omit `cursor` for the first page.
 
         Returns:
             A page of compact market hits (`items`, `next_cursor`, `limit`). Follow `next_cursor`
@@ -138,7 +139,8 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
 
         Args:
             params: Required `q` plus optional filters and `limit` (default 8, maximum 20).
-                Do not page; refine `q` or add filters for more results.
+                Keyword list filters are OR'd within a field; pass `tags_mode=all` to require
+                every tag. Do not page; refine `q` or add filters for more results.
 
         Returns:
             Compact market hits, nearest neighbors first. A single page; `next_cursor` is

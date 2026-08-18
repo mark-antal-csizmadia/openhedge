@@ -252,6 +252,28 @@ async def test_browse_limit_out_of_range_returns_422() -> None:
     assert too_high.status_code == 422
 
 
+@pytest.mark.asyncio
+async def test_browse_forwards_tags_mode_all() -> None:
+    store = FakeSearchStore()
+    store.scroll_result = ([], None)
+    async with api_client(store) as client:
+        response = await client.get(
+            "/v1/markets",
+            params=[("tags", "climate"), ("tags", "energy"), ("tags_mode", "all")],
+        )
+    assert response.status_code == 200
+    conditions = [
+        condition
+        for condition in (store.scroll_calls[0]["filters"].must or [])
+        if isinstance(condition, FieldCondition)
+    ]
+    assert [condition.match for condition in conditions] == [
+        MatchValue(value="climate"),
+        MatchValue(value="energy"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_browse_skips_invalid_payloads(caplog: pytest.LogCaptureFixture) -> None:
     store = FakeSearchStore()
     valid = _market(ticker="MKT-1")
@@ -293,6 +315,26 @@ async def test_search_embeds_query_and_returns_neighbors() -> None:
     conditions = [condition for condition in (call["filters"].must or []) if isinstance(condition, FieldCondition)]
     assert conditions[0].key == "tags"
     assert conditions[0].match == MatchValue(value="fed")
+
+
+@pytest.mark.asyncio
+async def test_search_forwards_tags_mode_all() -> None:
+    store = FakeSearchStore()
+    embedder = RecordingEmbedder()
+    store.query_result = []
+    async with api_client(store, embedder) as client:
+        response = await client.post(
+            "/v1/search",
+            json={"q": "oil", "tags": ["climate", "energy"], "tags_mode": "all"},
+        )
+    assert response.status_code == 200
+    conditions = [
+        condition for condition in (store.query_calls[0]["filters"].must or []) if isinstance(condition, FieldCondition)
+    ]
+    assert [condition.match for condition in conditions] == [
+        MatchValue(value="climate"),
+        MatchValue(value="energy"),
+    ]
 
 
 @pytest.mark.asyncio

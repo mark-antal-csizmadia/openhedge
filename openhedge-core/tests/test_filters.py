@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from openhedge_core.filters import FILTERABLE_FIELDS, MarketFilters, to_qdrant_filter
+from openhedge_core.filters import FILTER_CONTROL_FIELDS, FILTERABLE_FIELDS, MarketFilters, to_qdrant_filter
 from openhedge_core.types.market import MarketSource
 from openhedge_core.vector_store import QdrantVectorStore
 from qdrant_client.models import DatetimeRange, FieldCondition, MatchAny, MatchValue, Range
@@ -14,7 +14,7 @@ def _filter_field_name(name: str) -> str:
 
 
 def test_market_filters_cover_payload_indexes() -> None:
-    names = {_filter_field_name(name) for name in MarketFilters.model_fields}
+    names = {_filter_field_name(name) for name in MarketFilters.model_fields if name not in FILTER_CONTROL_FIELDS}
     assert names == FILTERABLE_FIELDS == set(QdrantVectorStore.PAYLOAD_INDEXES)
 
 
@@ -42,6 +42,34 @@ def test_multiple_keywords_use_match_any() -> None:
     by_key = {condition.key: condition.match for condition in conditions}
     assert by_key["ticker"] == MatchAny(any=["A", "B"])
     assert by_key["tags"] == MatchAny(any=["fed", "rates"])
+
+
+def test_tags_mode_all_requires_each_tag() -> None:
+    qfilter = to_qdrant_filter(MarketFilters(tags=["climate", "energy"], tags_mode="all"))
+    assert qfilter is not None
+    conditions = [condition for condition in qfilter.must or [] if isinstance(condition, FieldCondition)]
+    assert [condition.key for condition in conditions] == ["tags", "tags"]
+    assert [condition.match for condition in conditions] == [
+        MatchValue(value="climate"),
+        MatchValue(value="energy"),
+    ]
+
+
+def test_tags_mode_any_uses_match_any() -> None:
+    qfilter = to_qdrant_filter(MarketFilters(tags=["climate", "energy"], tags_mode="any"))
+    assert qfilter is not None
+    conditions = [condition for condition in qfilter.must or [] if isinstance(condition, FieldCondition)]
+    assert len(conditions) == 1
+    assert conditions[0].key == "tags"
+    assert conditions[0].match == MatchAny(any=["climate", "energy"])
+
+
+def test_tags_mode_all_single_tag_uses_match_value() -> None:
+    qfilter = to_qdrant_filter(MarketFilters(tags=["climate"], tags_mode="all"))
+    assert qfilter is not None
+    conditions = [condition for condition in qfilter.must or [] if isinstance(condition, FieldCondition)]
+    assert len(conditions) == 1
+    assert conditions[0].match == MatchValue(value="climate")
 
 
 def test_float_range() -> None:

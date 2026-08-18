@@ -164,6 +164,8 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "cursor" in _param_properties(browse_schema)
     assert "numeric offset" not in INSTRUCTIONS.lower()
     assert "category" in _schema_text(browse_schema)
+    assert "tags_mode" in _schema_text(browse_schema)
+    assert "tags_mode" in _schema_text(search_schema)
     assert "yes_ask_price_gte" in _schema_text(browse_schema)
     assert "dollars" in _schema_text(browse_schema)
     assert "ticker" in _schema_text(get_market_schema)
@@ -210,7 +212,7 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "substring" not in (by_name["list_tags"].description or "").lower()
     assert "full set" not in INSTRUCTIONS.lower()
     assert "substring" not in INSTRUCTIONS.lower()
-    assert "list_tags" in INSTRUCTIONS
+    assert "tags_mode=all" in INSTRUCTIONS
     hedge_description = (by_name["hedge"].description or "").lower()
     assert "ticker" in hedge_description
     assert "search_markets" in hedge_description
@@ -237,6 +239,20 @@ async def test_browse_markets_forwards_params() -> None:
     page = MarketPage.model_validate(result.structured_content)
     assert page.next_cursor == "next-page"
     assert page.items[0].ticker == "MKT-1"
+
+
+@pytest.mark.asyncio
+async def test_browse_markets_forwards_tags_mode() -> None:
+    api = FakeApiClient()
+    api.browse_result = MarketPage(items=[], next_cursor=None, limit=8)
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        await client.call_tool(
+            "browse_markets",
+            {"params": {"tags": ["climate", "energy"], "tags_mode": "all"}},
+        )
+    assert api.browse_calls[0].tags == ["climate", "energy"]
+    assert api.browse_calls[0].tags_mode == "all"
 
 
 @pytest.mark.asyncio
@@ -276,6 +292,21 @@ async def test_search_markets_forwards_query() -> None:
     page = MarketPage.model_validate(result.structured_content)
     assert page.items[0].ticker == "MKT-0"
     assert page.next_cursor is None
+
+
+@pytest.mark.asyncio
+async def test_search_markets_forwards_tags_mode() -> None:
+    api = FakeApiClient()
+    market = _market(ticker="MKT-0")
+    api.search_result = MarketPage(items=[market], next_cursor=None, limit=2)
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        await client.call_tool(
+            "search_markets",
+            {"params": {"q": "oil", "tags": ["climate", "energy"], "tags_mode": "all"}},
+        )
+    assert api.search_calls[0].tags == ["climate", "energy"]
+    assert api.search_calls[0].tags_mode == "all"
 
 
 @pytest.mark.asyncio
