@@ -313,7 +313,7 @@ async def test_get_market_missing_is_tool_error() -> None:
     api.errors["MISSING"] = OpenhedgeApiError(404, "market not found")
     mcp = create_mcp(api_client=api)
     async with Client(mcp) as client:
-        with pytest.raises(ToolError, match="market not found"):
+        with pytest.raises(ToolError, match=r"404: market not found"):
             await client.call_tool("get_market", {"ticker": "MISSING"})
 
 
@@ -323,7 +323,7 @@ async def test_search_unavailable_is_tool_error() -> None:
     api.errors["search"] = OpenhedgeApiError(503, "search is unavailable: embeddings are not configured")
     mcp = create_mcp(api_client=api)
     async with Client(mcp) as client:
-        with pytest.raises(ToolError, match="embeddings are not configured"):
+        with pytest.raises(ToolError, match=r"503: search is unavailable: embeddings are not configured"):
             await client.call_tool("search_markets", {"params": {"q": "oil"}})
 
 
@@ -361,7 +361,7 @@ async def test_hedge_missing_ticker_is_tool_error() -> None:
     api.errors["MISSING"] = OpenhedgeApiError(404, "market not found")
     mcp = create_mcp(api_client=api)
     async with Client(mcp) as client:
-        with pytest.raises(ToolError, match="market not found"):
+        with pytest.raises(ToolError, match=r"404: market not found"):
             await client.call_tool("hedge", {"params": {"legs": [{"ticker": "MISSING"}]}})
 
 

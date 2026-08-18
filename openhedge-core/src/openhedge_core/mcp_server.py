@@ -283,7 +283,7 @@ async def _call_api(method: Callable[..., Awaitable[T]], *args: object) -> T:
     try:
         return await method(*args)
     except OpenhedgeApiError as exc:
-        raise ToolError(exc.detail) from exc
+        raise ToolError(str(exc)) from exc
 
 
 def main() -> None:
