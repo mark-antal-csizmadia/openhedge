@@ -12,6 +12,9 @@ openhedge is an open source experimental tool that helps discover and find relev
 Components:
 - `openhedge-core`: a Python library (`src/openhedge_core`), Python 3.12+
 
+For install and how to run the stack, follow [`.agents/skills/how-to-get-started/SKILL.md`](.agents/skills/how-to-get-started/SKILL.md).
+To connect MCP and try example hedges, follow [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/skills/try-hedging-examples/SKILL.md).
+
 ## Layout
 
 - [`openhedge-core/`](openhedge-core/) — uv project (`pyproject.toml`, `uv.lock`, `src/`)
