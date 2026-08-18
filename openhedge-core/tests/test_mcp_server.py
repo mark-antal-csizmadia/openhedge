@@ -168,6 +168,23 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "tags_mode" in _schema_text(search_schema)
     assert "yes_ask_price_gte" in _schema_text(browse_schema)
     assert "dollars" in _schema_text(browse_schema)
+    browse_props = _param_properties(browse_schema)
+    search_props = _param_properties(search_schema)
+    for props in (browse_props, search_props):
+        assert "category" in props
+        assert "tags_mode" in props
+        assert "end_datetime_gte" in props
+        assert "yes_ask_price_gte" in props
+        assert "yes_bid_size_lte" not in props
+        assert "volume_gte" not in props
+        assert "source" not in props
+        assert "start_datetime_gte" not in props
+        assert "ticker" not in props
+    assert "event_ticker" in browse_props
+    assert "cursor" in browse_props
+    assert "q" not in browse_props
+    assert "event_ticker" not in search_props
+    assert "q" in search_props
     assert "ticker" in _schema_text(get_market_schema)
     assert "event_ticker" in _schema_text(get_event_schema)
     assert "q" not in _param_properties(list_tags_schema)
@@ -269,6 +286,39 @@ async def test_browse_markets_forwards_tags_mode() -> None:
         )
     assert api.browse_calls[0].tags == ["climate", "energy"]
     assert api.browse_calls[0].tags_mode == "all"
+
+
+@pytest.mark.asyncio
+async def test_browse_markets_forwards_event_ticker() -> None:
+    api = FakeApiClient()
+    api.browse_result = MarketPage(items=[], next_cursor=None, limit=8)
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        await client.call_tool(
+            "browse_markets",
+            {"params": {"event_ticker": ["KXGOVFLNOMR-26"]}},
+        )
+    assert api.browse_calls[0].event_ticker == ["KXGOVFLNOMR-26"]
+
+
+@pytest.mark.asyncio
+async def test_browse_markets_rejects_dropped_filters() -> None:
+    api = FakeApiClient()
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        with pytest.raises(Exception, match="volume_gte"):
+            await client.call_tool("browse_markets", {"params": {"volume_gte": 1000}})
+    assert api.browse_calls == []
+
+
+@pytest.mark.asyncio
+async def test_search_markets_rejects_dropped_filters() -> None:
+    api = FakeApiClient()
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        with pytest.raises(Exception, match="volume_gte"):
+            await client.call_tool("search_markets", {"params": {"q": "oil", "volume_gte": 1000}})
+    assert api.search_calls == []
 
 
 @pytest.mark.asyncio
