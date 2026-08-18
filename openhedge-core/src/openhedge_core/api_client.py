@@ -39,7 +39,7 @@ class OpenhedgeApiClient:
         return await self._get("/markets", MarketPage, params=params)
 
     async def search_markets(self, params: MarketSearchParams) -> MarketPage:
-        return await self._get("/search", MarketPage, params=params)
+        return await self._post("/search", MarketPage, params=params)
 
     async def get_market(self, ticker: str) -> Market:
         return await self._get(f"/markets/{ticker}", Market)
@@ -49,7 +49,15 @@ class OpenhedgeApiClient:
 
     async def _get(self, path: str, model: type[T], *, params: BaseModel | None = None) -> T:
         query = params.model_dump(mode="json", exclude_none=True) if params is not None else None
-        response = await self._client.get(path, params=query)
+        return self._parse(await self._client.get(path, params=query), model)
+
+    async def _post(self, path: str, model: type[T], *, params: BaseModel) -> T:
+        return self._parse(
+            await self._client.post(path, json=params.model_dump(mode="json", exclude_none=True)),
+            model,
+        )
+
+    def _parse(self, response: httpx.Response, model: type[T]) -> T:
         if response.status_code >= 400:
             raise OpenhedgeApiError(response.status_code, _response_detail(response))
         return model.model_validate(response.json())

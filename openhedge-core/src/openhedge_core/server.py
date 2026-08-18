@@ -29,7 +29,8 @@ DEFAULT_OPENROUTER_HTTP_REFERER = "https://openhedge.dev"
 DEFAULT_OPENROUTER_APP_TITLE = "openhedge"
 DEFAULT_PAGE_LIMIT = 20
 MAX_PAGE_LIMIT = 100
-MAX_SEARCH_OFFSET = 1000
+DEFAULT_SEARCH_LIMIT = 8
+MAX_SEARCH_LIMIT = 20
 EVENT_SCROLL_PAGE_SIZE = 100
 
 logger = logging.getLogger(__name__)
@@ -59,10 +60,16 @@ class MarketListParams(MarketFilters):
     )
 
 
-class MarketSearchParams(MarketListParams):
+class MarketSearchParams(MarketFilters):
     q: str = Field(
         min_length=1,
         description="Natural-language query embedded and matched against markets.",
+    )
+    limit: int = Field(
+        default=DEFAULT_SEARCH_LIMIT,
+        ge=1,
+        le=MAX_SEARCH_LIMIT,
+        description="Number of nearest neighbors to return. Defaults to 8, maximum 20.",
     )
 
 
@@ -112,7 +119,7 @@ def create_app(*, store: VectorStore | None = None, embedder: EmbeddingClient | 
     app.add_api_route("/markets", browse_markets, methods=["GET"], response_model=MarketPage)
     app.add_api_route("/markets/{ticker}", get_market, methods=["GET"], response_model=Market)
     app.add_api_route("/events/{event_ticker}", get_event, methods=["GET"], response_model=Event)
-    app.add_api_route("/search", search_markets, methods=["GET"], response_model=MarketPage)
+    app.add_api_route("/search", search_markets, methods=["POST"], response_model=MarketPage)
     return app
 
 
@@ -140,14 +147,11 @@ async def browse_markets(
 
 async def search_markets(
     request: Request,
-    params: Annotated[MarketSearchParams, Query()],
+    params: MarketSearchParams,
 ) -> MarketPage:
     embedder: EmbeddingClient | None = request.app.state.embedder
     if embedder is None:
         raise HTTPException(status_code=503, detail="search is unavailable: embeddings are not configured")
-    offset = _search_offset(params.cursor)
-    if offset + params.limit > MAX_SEARCH_OFFSET:
-        raise HTTPException(status_code=400, detail="cursor exceeds maximum search offset")
 
     vectors = await embedder.embed_batch([params.q])
     if len(vectors) != 1:
@@ -157,15 +161,12 @@ async def search_markets(
     hits = await store.query_points(
         vectors[0],
         to_qdrant_filter(params),
-        limit=params.limit + 1,
-        offset=offset,
+        limit=params.limit,
         payload_fields=MARKET_SUMMARY_PAYLOAD_FIELDS,
     )
-    has_more = len(hits) > params.limit
-    page_hits = hits[: params.limit]
     return MarketPage(
-        items=[MarketHit(market=MarketSummary.model_validate(payload), score=score) for payload, score in page_hits],
-        next_cursor=str(offset + params.limit) if has_more else None,
+        items=[MarketHit(market=MarketSummary.model_validate(payload), score=score) for payload, score in hits],
+        next_cursor=None,
         limit=params.limit,
     )
 
@@ -197,18 +198,6 @@ async def get_event(request: Request, event_ticker: str) -> Event:
         raise HTTPException(status_code=404, detail="event not found")
     markets = [MarketSummary.model_validate(payload) for payload in payloads]
     return Event.from_markets(markets)
-
-
-def _search_offset(cursor: str | None) -> int:
-    if not cursor:
-        return 0
-    try:
-        offset = int(cursor)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="invalid cursor") from exc
-    if offset < 0:
-        raise HTTPException(status_code=400, detail="invalid cursor")
-    return offset
 
 
 app = create_app()

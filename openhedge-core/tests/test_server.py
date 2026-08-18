@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 import pytest
-from openhedge_core.server import EVENT_SCROLL_PAGE_SIZE, MAX_SEARCH_OFFSET, create_app
+from openhedge_core.server import EVENT_SCROLL_PAGE_SIZE, create_app
 from openhedge_core.types.market import MARKET_SUMMARY_PAYLOAD_FIELDS, Market, MarketSource
 from openhedge_core.vector_store import PayloadUpdate, VectorPoint
 from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
@@ -104,7 +104,6 @@ class FakeSearchStore:
         filters: Filter | None,
         *,
         limit: int,
-        offset: int,
         payload_fields: Sequence[str] | None = None,
     ) -> list[tuple[dict[str, Any], float]]:
         self.query_calls.append(
@@ -112,7 +111,6 @@ class FakeSearchStore:
                 "vector": list(vector),
                 "filters": filters,
                 "limit": limit,
-                "offset": offset,
                 "payload_fields": payload_fields,
             }
         )
@@ -187,26 +185,25 @@ async def test_browse_returns_page_and_forwards_filters() -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_embeds_query_and_paginates() -> None:
+async def test_search_embeds_query_and_returns_neighbors() -> None:
     store = FakeSearchStore()
     embedder = RecordingEmbedder([1.0, 0.0, 0.0])
     markets = [_market(ticker=f"MKT-{i}") for i in range(3)]
     store.query_result = [(market.payload(), 0.9 - i * 0.1) for i, market in enumerate(markets)]
     async with api_client(store, embedder) as client:
-        response = await client.get("/search", params={"q": "oil prices", "limit": 2, "tags": "fed"})
+        response = await client.post("/search", json={"q": "oil prices", "limit": 2, "tags": ["fed"]})
     assert response.status_code == 200
     body = response.json()
     assert embedder.calls == [["oil prices"]]
     assert body["limit"] == 2
-    assert body["next_cursor"] == "2"
-    assert [item["market"]["ticker"] for item in body["items"]] == ["MKT-0", "MKT-1"]
+    assert body["next_cursor"] is None
+    assert [item["market"]["ticker"] for item in body["items"]] == ["MKT-0", "MKT-1", "MKT-2"]
     assert body["items"][0]["score"] == pytest.approx(0.9)
     _assert_compact_market(body["items"][0]["market"])
     assert len(store.query_calls) == 1
     call = store.query_calls[0]
     assert call["vector"] == [1.0, 0.0, 0.0]
-    assert call["limit"] == 3
-    assert call["offset"] == 0
+    assert call["limit"] == 2
     assert call["payload_fields"] == MARKET_SUMMARY_PAYLOAD_FIELDS
     conditions = [condition for condition in (call["filters"].must or []) if isinstance(condition, FieldCondition)]
     assert conditions[0].key == "tags"
@@ -214,23 +211,10 @@ async def test_search_embeds_query_and_paginates() -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_uses_cursor_offset() -> None:
-    store = FakeSearchStore()
-    store.query_result = [(_market(ticker="MKT-2").payload(), 0.5)]
-    async with api_client(store, RecordingEmbedder()) as client:
-        response = await client.get("/search", params={"q": "rates", "limit": 2, "cursor": "2"})
-    assert response.status_code == 200
-    body = response.json()
-    assert body["next_cursor"] is None
-    assert store.query_calls[0]["offset"] == 2
-    assert store.query_calls[0]["limit"] == 3
-
-
-@pytest.mark.asyncio
 async def test_search_requires_query() -> None:
     async with api_client(FakeSearchStore(), RecordingEmbedder()) as client:
-        missing = await client.get("/search")
-        empty = await client.get("/search", params={"q": ""})
+        missing = await client.post("/search", json={})
+        empty = await client.post("/search", json={"q": ""})
     assert missing.status_code == 422
     assert empty.status_code == 422
 
@@ -238,20 +222,15 @@ async def test_search_requires_query() -> None:
 @pytest.mark.asyncio
 async def test_search_without_embedder_returns_503() -> None:
     async with api_client(FakeSearchStore()) as client:
-        response = await client.get("/search", params={"q": "oil"})
+        response = await client.post("/search", json={"q": "oil"})
     assert response.status_code == 503
 
 
 @pytest.mark.asyncio
-async def test_search_rejects_invalid_and_oversized_cursors() -> None:
+async def test_search_rejects_cursor() -> None:
     async with api_client(FakeSearchStore(), RecordingEmbedder()) as client:
-        invalid = await client.get("/search", params={"q": "oil", "cursor": "abc"})
-        oversized = await client.get(
-            "/search",
-            params={"q": "oil", "cursor": str(MAX_SEARCH_OFFSET), "limit": 1},
-        )
-    assert invalid.status_code == 400
-    assert oversized.status_code == 400
+        response = await client.post("/search", json={"q": "oil", "cursor": "abc"})
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

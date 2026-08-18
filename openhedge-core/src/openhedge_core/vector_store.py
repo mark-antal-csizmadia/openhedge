@@ -65,7 +65,6 @@ class VectorStore(Protocol):
         filters: Filter | None,
         *,
         limit: int,
-        offset: int,
         payload_fields: Sequence[str] | None = None,
     ) -> list[tuple[dict[str, Any], float]]: ...
 
@@ -200,7 +199,6 @@ class QdrantVectorStore:
         filters: Filter | None,
         *,
         limit: int,
-        offset: int,
         payload_fields: Sequence[str] | None = None,
     ) -> list[tuple[dict[str, Any], float]]:
         response = await self._client.query_points(
@@ -208,7 +206,6 @@ class QdrantVectorStore:
             query=list(vector),
             query_filter=filters,
             limit=limit,
-            offset=offset,
             with_payload=_payload_selector(payload_fields),
             with_vectors=False,
         )
