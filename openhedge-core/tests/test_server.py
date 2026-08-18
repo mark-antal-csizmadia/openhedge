@@ -6,10 +6,10 @@ from typing import Any, Literal
 import httpx
 import pytest
 from openhedge_core.server import (
-    CATEGORY_FACET_LIMIT,
+    DEFAULT_VOCAB_LIMIT,
     EVENT_SCROLL_PAGE_SIZE,
     MAX_EVENT_MARKETS,
-    TAG_FACET_SCAN_LIMIT,
+    MAX_VOCAB_LIMIT,
     create_app,
 )
 from openhedge_core.types.market import MARKET_SUMMARY_PAYLOAD_FIELDS, Market, MarketSource
@@ -329,31 +329,61 @@ async def test_get_event_missing_returns_404() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_categories_returns_sorted_values() -> None:
+async def test_list_categories_returns_popularity_order() -> None:
     store = FakeSearchStore()
     store.facet_result["category"] = ["Sports", "Politics", "Economics"]
     async with api_client(store) as client:
         response = await client.get("/categories")
     assert response.status_code == 200
-    assert response.json() == {"items": ["Economics", "Politics", "Sports"]}
-    assert store.facet_calls == [{"field": "category", "limit": CATEGORY_FACET_LIMIT}]
+    assert response.json() == {
+        "items": ["Sports", "Politics", "Economics"],
+        "truncated": False,
+        "limit": DEFAULT_VOCAB_LIMIT,
+    }
+    assert store.facet_calls == [{"field": "category", "limit": DEFAULT_VOCAB_LIMIT}]
 
 
 @pytest.mark.asyncio
-async def test_search_tags_filters_substring_and_honors_limit() -> None:
+async def test_list_categories_truncated_when_facet_fills_limit() -> None:
+    store = FakeSearchStore()
+    store.facet_result["category"] = ["A", "B", "C"]
+    async with api_client(store) as client:
+        response = await client.get("/categories", params={"limit": 3})
+    assert response.status_code == 200
+    assert response.json() == {"items": ["A", "B", "C"], "truncated": True, "limit": 3}
+    assert store.facet_calls == [{"field": "category", "limit": 3}]
+
+
+@pytest.mark.asyncio
+async def test_list_tags_returns_popular_values() -> None:
     store = FakeSearchStore()
     store.facet_result["tags"] = ["elections", "fed", "federal-reserve", "nba"]
     async with api_client(store) as client:
-        response = await client.get("/tags", params={"q": "FED", "limit": 2})
+        response = await client.get("/tags")
     assert response.status_code == 200
-    assert response.json() == {"items": ["fed", "federal-reserve"]}
-    assert store.facet_calls == [{"field": "tags", "limit": TAG_FACET_SCAN_LIMIT}]
+    assert response.json() == {
+        "items": ["elections", "fed", "federal-reserve", "nba"],
+        "truncated": False,
+        "limit": DEFAULT_VOCAB_LIMIT,
+    }
+    assert store.facet_calls == [{"field": "tags", "limit": DEFAULT_VOCAB_LIMIT}]
 
 
 @pytest.mark.asyncio
-async def test_search_tags_requires_query() -> None:
+async def test_list_tags_honors_limit_and_truncated() -> None:
+    store = FakeSearchStore()
+    store.facet_result["tags"] = ["elections", "fed", "federal-reserve", "nba"]
+    async with api_client(store) as client:
+        response = await client.get("/tags", params={"limit": 2})
+    assert response.status_code == 200
+    assert response.json() == {"items": ["elections", "fed"], "truncated": True, "limit": 2}
+    assert store.facet_calls == [{"field": "tags", "limit": 2}]
+
+
+@pytest.mark.asyncio
+async def test_vocab_limit_out_of_range_returns_422() -> None:
     async with api_client(FakeSearchStore()) as client:
-        missing = await client.get("/tags")
-        empty = await client.get("/tags", params={"q": ""})
-    assert missing.status_code == 422
-    assert empty.status_code == 422
+        too_low = await client.get("/tags", params={"limit": 0})
+        too_high = await client.get("/categories", params={"limit": MAX_VOCAB_LIMIT + 1})
+    assert too_low.status_code == 422
+    assert too_high.status_code == 422

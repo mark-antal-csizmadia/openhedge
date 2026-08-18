@@ -2,7 +2,7 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -33,10 +33,8 @@ DEFAULT_SEARCH_LIMIT = 8
 MAX_SEARCH_LIMIT = 20
 EVENT_SCROLL_PAGE_SIZE = 100
 MAX_EVENT_MARKETS = 50
-CATEGORY_FACET_LIMIT = 100
-TAG_FACET_SCAN_LIMIT = 1000
-DEFAULT_TAG_LIMIT = 20
-MAX_TAG_LIMIT = 50
+DEFAULT_VOCAB_LIMIT = 20
+MAX_VOCAB_LIMIT = 100
 
 logger = logging.getLogger(__name__)
 
@@ -78,21 +76,21 @@ class MarketSearchParams(MarketFilters):
     )
 
 
+class VocabListParams(BaseModel):
+    limit: int = Field(
+        default=DEFAULT_VOCAB_LIMIT,
+        ge=1,
+        le=MAX_VOCAB_LIMIT,
+        description="Number of most popular facet values to return. Defaults to 20, maximum 100.",
+    )
+
+
 class VocabList(BaseModel):
     items: list[str]
-
-
-class TagSearchParams(BaseModel):
-    q: str = Field(
-        min_length=1,
-        description="Case-insensitive substring matched against tag values.",
+    truncated: bool = Field(
+        description="True when the facet list was capped at limit; more values may exist.",
     )
-    limit: int = Field(
-        default=DEFAULT_TAG_LIMIT,
-        ge=1,
-        le=MAX_TAG_LIMIT,
-        description="Maximum number of matching tags to return. Defaults to 20, maximum 50.",
-    )
+    limit: int
 
 
 def create_app(*, store: VectorStore | None = None, embedder: EmbeddingClient | None = None) -> FastAPI:
@@ -143,7 +141,7 @@ def create_app(*, store: VectorStore | None = None, embedder: EmbeddingClient | 
     app.add_api_route("/events/{event_ticker}", get_event, methods=["GET"], response_model=Event)
     app.add_api_route("/search", search_markets, methods=["POST"], response_model=MarketPage)
     app.add_api_route("/categories", list_categories, methods=["GET"], response_model=VocabList)
-    app.add_api_route("/tags", search_tags, methods=["GET"], response_model=VocabList)
+    app.add_api_route("/tags", list_tags, methods=["GET"], response_model=VocabList)
     return app
 
 
@@ -224,21 +222,27 @@ async def get_event(request: Request, event_ticker: str) -> Event:
     return Event.from_markets(markets, limit=MAX_EVENT_MARKETS)
 
 
-async def list_categories(request: Request) -> VocabList:
-    store: VectorStore = request.app.state.store
-    values = await store.facet_values("category", limit=CATEGORY_FACET_LIMIT)
-    return VocabList(items=sorted(values))
-
-
-async def search_tags(
+async def list_categories(
     request: Request,
-    params: Annotated[TagSearchParams, Query()],
+    params: Annotated[VocabListParams, Query()],
 ) -> VocabList:
-    store: VectorStore = request.app.state.store
-    values = await store.facet_values("tags", limit=TAG_FACET_SCAN_LIMIT)
-    needle = params.q.casefold()
-    matched = [value for value in values if needle in value.casefold()]
-    return VocabList(items=matched[: params.limit])
+    return await _list_vocab(request.app.state.store, "category", params)
+
+
+async def list_tags(
+    request: Request,
+    params: Annotated[VocabListParams, Query()],
+) -> VocabList:
+    return await _list_vocab(request.app.state.store, "tags", params)
+
+
+async def _list_vocab(
+    store: VectorStore,
+    field: Literal["category", "tags"],
+    params: VocabListParams,
+) -> VocabList:
+    values = await store.facet_values(field, limit=params.limit)
+    return VocabList(items=values, truncated=len(values) == params.limit, limit=params.limit)
 
 
 app = create_app()

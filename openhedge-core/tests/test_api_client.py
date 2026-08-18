@@ -8,7 +8,7 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 from openhedge_core.api_client import OpenhedgeApiClient, OpenhedgeApiError
-from openhedge_core.server import MarketHit, MarketListParams, MarketPage, MarketSearchParams, TagSearchParams
+from openhedge_core.server import MarketHit, MarketListParams, MarketPage, MarketSearchParams, VocabListParams
 from openhedge_core.types.market import Event, Market, MarketSource
 
 
@@ -176,36 +176,47 @@ async def test_search_503_raises() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_categories_parses_items() -> None:
+async def test_list_categories_encodes_limit_and_parses() -> None:
     captured: dict[str, str] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["path"] = request.url.path
         captured["query"] = request.url.query.decode()
-        return httpx.Response(200, json={"items": ["Economics", "Politics"]})
+        return httpx.Response(
+            200,
+            json={"items": ["Politics", "Economics"], "truncated": False, "limit": 20},
+        )
 
     async with api_client(handler) as client:
-        result = await client.list_categories()
+        result = await client.list_categories(VocabListParams())
 
     assert captured["path"] == "/categories"
-    assert captured["query"] == ""
-    assert result.items == ["Economics", "Politics"]
+    query = parse_qs(captured["query"])
+    assert query["limit"] == ["20"]
+    assert result.items == ["Politics", "Economics"]
+    assert result.truncated is False
+    assert result.limit == 20
 
 
 @pytest.mark.asyncio
-async def test_search_tags_encodes_query() -> None:
+async def test_list_tags_encodes_limit_and_parses() -> None:
     captured: dict[str, str] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["path"] = request.url.path
         captured["query"] = request.url.query.decode()
-        return httpx.Response(200, json={"items": ["fed", "federal-reserve"]})
+        return httpx.Response(
+            200,
+            json={"items": ["elections", "fed"], "truncated": True, "limit": 2},
+        )
 
     async with api_client(handler) as client:
-        result = await client.search_tags(TagSearchParams(q="fed", limit=2))
+        result = await client.list_tags(VocabListParams(limit=2))
 
     assert captured["path"] == "/tags"
     query = parse_qs(captured["query"])
-    assert query["q"] == ["fed"]
+    assert "q" not in query
     assert query["limit"] == ["2"]
-    assert result.items == ["fed", "federal-reserve"]
+    assert result.items == ["elections", "fed"]
+    assert result.truncated is True
+    assert result.limit == 2

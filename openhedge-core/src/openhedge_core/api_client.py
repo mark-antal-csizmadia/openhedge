@@ -4,7 +4,7 @@ from typing import Any, Protocol, TypeVar
 import httpx
 from pydantic import BaseModel
 
-from openhedge_core.server import MarketListParams, MarketPage, MarketSearchParams, TagSearchParams, VocabList
+from openhedge_core.server import MarketListParams, MarketPage, MarketSearchParams, VocabList, VocabListParams
 from openhedge_core.types.market import Event, Market
 
 T = TypeVar("T", bound=BaseModel)
@@ -15,8 +15,8 @@ class MarketApi(Protocol):
     async def search_markets(self, params: MarketSearchParams) -> MarketPage: ...
     async def get_market(self, ticker: str) -> Market: ...
     async def get_event(self, event_ticker: str) -> Event: ...
-    async def list_categories(self) -> VocabList: ...
-    async def search_tags(self, params: TagSearchParams) -> VocabList: ...
+    async def list_categories(self, params: VocabListParams) -> VocabList: ...
+    async def list_tags(self, params: VocabListParams) -> VocabList: ...
 
 
 class OpenhedgeApiError(Exception):
@@ -49,10 +49,10 @@ class OpenhedgeApiClient:
     async def get_event(self, event_ticker: str) -> Event:
         return await self._get(f"/events/{event_ticker}", Event)
 
-    async def list_categories(self) -> VocabList:
-        return await self._get("/categories", VocabList)
+    async def list_categories(self, params: VocabListParams) -> VocabList:
+        return await self._get("/categories", VocabList, params=params)
 
-    async def search_tags(self, params: TagSearchParams) -> VocabList:
+    async def list_tags(self, params: VocabListParams) -> VocabList:
         return await self._get("/tags", VocabList, params=params)
 
     async def _get(self, path: str, model: type[T], *, params: BaseModel | None = None) -> T:

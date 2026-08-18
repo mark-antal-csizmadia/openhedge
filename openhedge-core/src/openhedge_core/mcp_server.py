@@ -13,7 +13,7 @@ from starlette.responses import JSONResponse
 
 from openhedge_core.api_client import MarketApi, OpenhedgeApiClient, OpenhedgeApiError
 from openhedge_core.hedge import HEDGE_MATH_MARKDOWN, HedgeParams, HedgeResult, size_hedges
-from openhedge_core.server import MarketListParams, MarketPage, MarketSearchParams, TagSearchParams, VocabList
+from openhedge_core.server import MarketListParams, MarketPage, MarketSearchParams, VocabList, VocabListParams
 from openhedge_core.types.market import Event, Market
 
 T = TypeVar("T")
@@ -36,8 +36,8 @@ openhedge discovers hedges in event contracts and prediction markets. It does no
 Workflow:
 1. Use search_markets (try several queries or add filters) when the user describes an exposure in
    prose. Use browse_markets when they already have structured filters. Hits are compact:
-   question, outcomes, prices/sizes, and url — not resolution rules. Use list_categories for the
-   full set of category filter values. Use search_tags to discover tag filter values.
+   question, outcomes, prices/sizes, and url — not resolution rules. Use list_categories and
+   list_tags for the most popular filter values, not a complete catalog.
 2. Use get_event when a strike ladder might fit. Compare question, yes_outcome/no_outcome,
    and strike_order. get_event is capped; if truncated is true, continue with browse_markets
    using event_ticker=[that ticker] and follow next_cursor. Browse is not strike-ordered and
@@ -56,12 +56,12 @@ The hedge_risk prompt is the playbook for collecting markets then sizing.
 
 Pagination: browse_markets uses cursor pagination. If a page includes next_cursor, pass it back as
 cursor for the next page. search_markets returns a single page; refine q or add filters instead of
-paging. search_tags is also a single page of keyword matches; if nothing fits, try a different q
-(for example fed, election) rather than paging. Matching is a substring on tag strings, not
-semantic search. list_categories returns the full set; do not page it. get_event returns at most
-50 markets ordered by strike_order. If truncated is true, continue with browse_markets using
-event_ticker=[that ticker] and follow next_cursor. Browse is not strike-ordered and may overlap
-the returned slice; dedupe by ticker, then compare strike_order.
+paging. list_categories and list_tags return a single capped list of the most popular values,
+ordered by frequency. If truncated is true, raise limit (maximum 100); do not page, and do not
+expect rare tags. get_event returns at most 50 markets ordered by strike_order. If truncated is
+true, continue with browse_markets using event_ticker=[that ticker] and follow next_cursor.
+Browse is not strike-ordered and may overlap the returned slice; dedupe by ticker, then compare
+strike_order.
 Prices are in dollars in [0, 1]. yes_ask_price is the best YES sell offer; yes_bid_price is the best YES buy offer. A YES ask plus the corresponding NO bid equals 1.0. Compact hits include yes_ask_size and yes_bid_size.
 Keyword filters are lists (OR within a field). Range filters are inclusive.
 search_markets requires embeddings on the upstream API and fails if they are not configured.
@@ -196,37 +196,38 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         return await _call_api(api_client.get_event, event_ticker)
 
     @mcp.tool(title="List categories", annotations=_READ_ONLY_TOOL)
-    async def list_categories() -> VocabList:
-        """List every market category value currently in the catalog.
+    async def list_categories(params: VocabListParams) -> VocabList:
+        """List the most popular market category values.
 
         Use this to discover valid `category` filter values before browse_markets or
-        search_markets. The list is complete; do not page it. Pass items into `category`
-        as a list.
-
-        Returns:
-            `items` is the full set of category strings, sorted alphabetically.
-        """
-        return await _call_api(api_client.list_categories)
-
-    @mcp.tool(title="Search tags", annotations=_READ_ONLY_TOOL)
-    async def search_tags(params: TagSearchParams) -> VocabList:
-        """Find tag filter values by keyword substring.
-
-        Use this to discover valid `tags` filter values before browse_markets or
-        search_markets. Matching is a case-insensitive substring on tag strings, not
-        semantic search. This is a single page; if nothing fits, try a different `q`
-        (for example fed, election) rather than paging.
+        search_markets. Values are ordered by frequency, not alphabetically. The list is
+        capped; if truncated is true, raise limit (maximum 100). Do not page. Pass items
+        into `category` as a list. This is not a complete catalog.
 
         Args:
-            params: Required `q` plus optional `limit` (default 20, maximum 50).
+            params: Optional `limit` (default 20, maximum 100).
 
         Returns:
-            Matching tag strings in `items`. A single page; do not request a cursor.
-
-        Raises:
-            ToolError: If `q` is empty (422).
+            Popular category strings in `items`. If `truncated` is true, more values exist.
         """
-        return await _call_api(api_client.search_tags, params)
+        return await _call_api(api_client.list_categories, params)
+
+    @mcp.tool(title="List tags", annotations=_READ_ONLY_TOOL)
+    async def list_tags(params: VocabListParams) -> VocabList:
+        """List the most popular tag filter values.
+
+        Use this to discover valid `tags` filter values before browse_markets or
+        search_markets. Values are ordered by frequency. The list is capped; if truncated
+        is true, raise limit (maximum 100). Do not page, and do not expect rare tags.
+        Pass items into `tags` as a list. This is not a complete catalog.
+
+        Args:
+            params: Optional `limit` (default 20, maximum 100).
+
+        Returns:
+            Popular tag strings in `items`. If `truncated` is true, more values exist.
+        """
+        return await _call_api(api_client.list_tags, params)
 
     @mcp.prompt
     def hedge_risk(risk: str) -> str:
