@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from openhedge_core.types.market import Market
+from openhedge_core.types.market import PRICE_DECIMALS, Market
 
 HedgeSide = Literal["yes", "no"]
 
@@ -13,7 +13,8 @@ HEDGE_MATH_MARKDOWN = """\
 # openhedge hedge math
 
 Kalshi-style event contracts are binary. A contract on the chosen side pays **$1.00** if that
-side resolves and **$0.00** otherwise. Prices are in dollars in `[0, 1]`.
+side resolves and **$0.00** otherwise. Prices are in dollars in `[0, 1]` and are not snapped to
+cents (deci-cent books quote to 0.001). Contract counts snap to 0.01.
 
 ## Yes / No complement
 
@@ -153,7 +154,7 @@ def size_hedge(market: Market, params: HedgeParams) -> HedgeCandidate:
         url=market.url,
         question=market.question,
         side=params.side,
-        price_per_contract=round(price, CONTRACT_PRECISION),
+        price_per_contract=round(price, PRICE_DECIMALS),
         available_size=round(available_size, CONTRACT_PRECISION),
         contracts=contracts,
         premium_dollars=premium,
