@@ -28,6 +28,7 @@ MARKET_ACTIVE = {
     "yes_sub_title": "Yes",
     "no_sub_title": "No",
     "status": "active",
+    "market_type": "binary",
     "last_price_dollars": 0.5,
     "yes_ask_dollars": 0.55,
     "yes_ask_size_fp": 10.0,

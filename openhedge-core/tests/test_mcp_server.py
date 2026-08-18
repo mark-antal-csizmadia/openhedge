@@ -507,6 +507,9 @@ async def test_list_prompts_and_resources() -> None:
     assert "hedge" in prompt_text.lower()
     resource_text = "".join(block.text for block in resource)
     assert resource_text == HEDGE_MATH_MARKDOWN
+    assert "does not ingest scalar" in resource_text
+    assert "top of that book only" in resource_text
+    assert "ignores fees" in resource_text
 
 
 @pytest.mark.asyncio

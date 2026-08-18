@@ -12,9 +12,10 @@ UNIT_PAYOUT_DOLLARS = 1.0
 HEDGE_MATH_MARKDOWN = """\
 # openhedge hedge math
 
-Kalshi-style event contracts are binary. A contract on the chosen side pays **$1.00** if that
-side resolves and **$0.00** otherwise. Prices are in dollars in `[0, 1]` and are not snapped to
-cents (deci-cent books quote to 0.001). Contract counts snap to 0.01.
+Only **binary** event contracts are supported for now; the catalog does not ingest scalar
+markets. A binary contract on the chosen side pays **$1.00** if that side resolves and
+**$0.00** otherwise. Prices are in dollars in `[0, 1]` and are not snapped to cents
+(deci-cent books quote to 0.001). Contract counts snap to 0.01.
 
 ## Yes / No complement
 
@@ -25,7 +26,9 @@ The book is one pool viewed from two sides:
 - Size at the YES ask equals size at the complementary NO bid
 - Size at the YES bid equals size at the complementary NO ask
 
-Buying YES at price `P` is the same exposure as selling NO at `1 - P` (ignoring fees).
+Buying YES at price `P` is the same exposure as selling NO at `1 - P`. Kalshi still charges
+a trade fee (plus rounding); `hedge` ignores fees, so premium and `net_if_*` are slightly
+optimistic versus a real fill.
 
 ## How `hedge` sizes a position
 
@@ -34,6 +37,10 @@ Discovery is not part of this tool. The agent chooses markets with `search_marke
 ticker and sizes a **buy** of that side at the current best ask (not a custom limit price).
 Agents may call `hedge` in parallel for several tickers.
 
+Kalshi's orderbook is bids-only (`yes_dollars` / `no_dollars` ladders); a YES ask is the
+complement of the best NO bid. `hedge` uses the stored top of that book only. It does not
+fetch the orderbook endpoint or walk deeper levels for a VWAP premium.
+
 - YES: `price = yes_ask_price`, `available_size = yes_ask_size`
 - NO: `price = 1 - yes_bid_price`, `available_size = yes_bid_size`
 
@@ -41,7 +48,7 @@ If `estimated_hit_dollars` is set:
 
 - `target_payout = estimated_hit_dollars * coverage`
 - `contracts = min(round(target_payout, 2), available_size)`
-- `premium = contracts * price`
+- `premium = contracts * price` (quoted ask only; no fees)
 - `gross_payout = contracts` (each contract pays $1)
 - `net_if_pays = estimated_hit_dollars - gross_payout - premium`
 - `net_if_expires = -premium`
@@ -53,7 +60,8 @@ If no dollar hit is given, the same formulas run with `target_payout = $1` (unit
 and `net_if_pays` / `net_if_expires` are omitted.
 
 `liquidity_constrained` is true when top-of-book size is smaller than the unconstrained
-contract count. That is a warning, not a reason to invent size beyond the quoted ask.
+contract count. Size is capped at that quoted ask; `hedge` does not fill remaining size
+at worse prices. That is a warning, not a reason to invent size beyond the quoted ask.
 
 ## When to say none fits
 
@@ -115,22 +123,28 @@ class HedgeCandidate(BaseModel):
     )
     available_size: float = Field(description="Contract size quoted at that ask.")
     contracts: float = Field(description="Contracts to buy, snapped to 0.01 and capped by available_size.")
-    premium_dollars: float = Field(description="Upfront cost: contracts times price_per_contract.")
+    premium_dollars: float = Field(
+        description="Upfront cost: contracts times price_per_contract. Ignores Kalshi trade and rounding fees."
+    )
     gross_payout_dollars: float = Field(
         description="Gross settlement if `side` wins: contracts times $1.",
     )
     net_if_pays: float | None = Field(
         default=None,
         description=(
-            "estimated_hit_dollars minus gross_payout_dollars minus premium_dollars. Null when no dollar hit was given."
+            "estimated_hit_dollars minus gross_payout_dollars minus premium_dollars. "
+            "Ignores fees. Null when no dollar hit was given."
         ),
     )
     net_if_expires: float | None = Field(
         default=None,
-        description="Cash result if `side` loses: minus premium_dollars. Null when no dollar hit was given.",
+        description="Cash result if `side` loses: minus premium_dollars. Ignores fees. Null when no dollar hit was given.",
     )
     liquidity_constrained: bool = Field(
-        description="True when available_size is smaller than the unconstrained contract count.",
+        description=(
+            "True when top-of-book available_size is smaller than the unconstrained contract count. "
+            "Size is capped at that ask; deeper book levels are not used."
+        ),
     )
 
 

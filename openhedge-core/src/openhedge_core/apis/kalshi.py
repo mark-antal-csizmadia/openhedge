@@ -14,6 +14,7 @@ from openhedge_core.types.kalshi import (
     KalshiEventStatus,
     KalshiMarket,
     KalshiMarketStatus,
+    KalshiMarketType,
 )
 
 logger = logging.getLogger(__name__)
@@ -139,7 +140,7 @@ async def produce_markets(
         async for envelope in produce_events(client, limiter, params):
             for event in envelope.events:
                 for strike_order, market in enumerate(event.markets):
-                    if market.status in market_statuses:
+                    if market.status in market_statuses and market.market_type == KalshiMarketType.BINARY:
                         yield event, market, strike_order
 
 
@@ -147,7 +148,7 @@ async def produce_open_markets(
     client: httpx.AsyncClient,
     limiter: AsyncLimiter,
 ) -> AsyncIterator[tuple[KalshiEvent, KalshiMarket, int]]:
-    """Yield active markets under open events."""
+    """Yield active binary markets under open events."""
     async for item in produce_markets(
         client,
         limiter,
@@ -161,7 +162,7 @@ async def produce_closed_markets(
     client: httpx.AsyncClient,
     limiter: AsyncLimiter,
 ) -> AsyncIterator[tuple[KalshiEvent, KalshiMarket, int]]:
-    """Yield closed markets under open and closed events."""
+    """Yield closed binary markets under open and closed events."""
     async for item in produce_markets(
         client,
         limiter,
