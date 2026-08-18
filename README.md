@@ -2,13 +2,26 @@
 
 Open source experimental tool for discovering relevant hedges using event contracts and prediction markets.
 
-## Components
+It does not hold money or place trades. Any order happens on the source venue (today, [Kalshi](https://kalshi.com)).
 
-- **openhedge-core** — Python 3.12+ library (`openhedge-core/src/openhedge_core`)
+## Inspiration
 
-## Development
+This project is inspired by [Blanket](https://tryblanket.app/) — a sharp, well-designed product that maps a small-business risk in plain language to live Kalshi markets, sizes a partial offset, and says so when nothing fits. Blanket found that fuel, fertilizer, weather, financing, and game-day promotions are real exposures, and that a prediction-market contract is sometimes a useful (if imperfect) proxy.
 
-Requires [uv](https://docs.astral.sh/uv/) and [pre-commit](https://pre-commit.com/).
+Blanket is independently published and powered by Kalshi. It does not hold money or place trades. openhedge is an open-source way to play with the same idea: ingest a catalog of binary event contracts, search it semantically, size a cash-flow hedge, and present the result — including an honest “none fits.”
+
+## Point your agent at the skills
+
+This repo ships Cursor agent skills. If you are using Cursor (or another agent that can follow a skill file), point it at these rather than improvising setup:
+
+- [`.agents/skills/how-to-get-started/SKILL.md`](.agents/skills/how-to-get-started/SKILL.md) — install, `.env`, Docker Compose, health checks
+- [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/skills/try-hedging-examples/SKILL.md) — connect MCP and run Blanket-style example prompts
+
+[`AGENTS.md`](AGENTS.md) already tells agents to follow those skills.
+
+## Getting started
+
+Requires [uv](https://docs.astral.sh/uv/), [Docker](https://docs.docker.com/), Python 3.12+, and an [OpenRouter](https://openrouter.ai/) API key (`OPENROUTER_API_KEY`) for market sync and search.
 
 ```bash
 # uv
@@ -23,24 +36,28 @@ From the repo root:
 ```bash
 uv sync --project openhedge-core
 pre-commit install
+cp .env.example .env
 ```
 
-Run all hooks:
+Fill `OPENROUTER_API_KEY` in `.env`. Do not commit `.env`.
 
-```bash
-pre-commit run --all-files
-```
-
-## Docker
+Then start the stack:
 
 ```bash
 docker compose up
 ```
 
-- REST API: `http://localhost:8000/v1`
-- MCP (Streamable HTTP): `http://localhost:8001/mcp`
+Compose starts Qdrant, creates the collection, loops `sync_markets` (hourly by default), the REST API, and MCP.
 
-Example MCP client config:
+| Service | URL |
+| --- | --- |
+| REST API | `http://localhost:8000/v1` |
+| API health | `http://localhost:8000/health` |
+| API ready | `http://localhost:8000/ready` |
+| MCP (Streamable HTTP) | `http://localhost:8001/mcp` |
+| MCP ready | `http://localhost:8001/ready` |
+
+Example MCP client config (Cursor: `.cursor/mcp.json`):
 
 ```json
 {
@@ -50,4 +67,214 @@ Example MCP client config:
     }
   }
 }
+```
+
+Do not add a `type` field. Reload MCP and confirm `openhedge` is connected.
+
+Verify:
+
+```bash
+curl -sS http://localhost:8000/health
+curl -sS http://localhost:8000/ready
+curl -sS http://localhost:8001/ready
+```
+
+Without `OPENROUTER_API_KEY`, sync will not start and `/v1/search` returns 503.
+
+## Try hedging examples
+
+Once MCP is up, follow [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/skills/try-hedging-examples/SKILL.md). Prefer the MCP `hedge_risk` prompt, or walk `search_markets` → `get_market` → `hedge` → `present_hedge`.
+
+Example prompts (adapted from [Blanket’s casebook](https://tryblanket.app/#examples)):
+
+**Atlas Trucking** (Denver, fuel)
+
+> I run a four-truck fleet in Denver. Diesel above $5 could cost us about $50,000 this year.
+
+**Wrigleyville Tap** (Chicago, sports)
+
+> I run a bar in Wrigleyville. If the Cubs win, I want to fund a customer offer; the promo could cost us about $5,000.
+
+**Prairie Gold Farms** (Iowa, input)
+
+> I farm in central Iowa. A fertilizer jump toward $1,000 a ton would squeeze this season’s margins.
+
+**Taverna Bonfouca** (New Orleans, weather)
+
+> I run a restaurant in New Orleans. A major hurricane this season would wipe out our outdoor covers and tourist weeks.
+
+**Northline Dental** (Manchester NH, financing)
+
+> I run a dental practice in Manchester, NH. A floating-rate reset toward 4.75% would raise our equipment-loan payments.
+
+**Harbor Street Books** (Portland ME, missing market)
+
+> I run a bookstore in Portland, Maine. A weak cruise-ship weekend would cut our walk-in sales.
+
+Harbor Street Books is a **missing-market** case. Do not force a match; `present_hedge` with `verdict=none` is a valid result.
+
+openhedge does not place trades. Review live price, size, fees, eligibility, and rules on Kalshi before doing anything with a suggested market.
+
+## How it works
+
+```mermaid
+flowchart LR
+  Kalshi[Kalshi REST] --> sync[sync_markets]
+  sync --> embed[OpenRouter embeddings]
+  embed --> qdrant[(Qdrant)]
+  qdrant --> api["REST API :8000"]
+  api --> mcp["MCP :8001"]
+  mcp --> agent[Agent]
+```
+
+### Ingest
+
+A background sync pulls **active binary** Kalshi markets from the public REST API. Scalar markets are skipped; hedge math assumes a $1 / $0 payout.
+
+For each new ticker, openhedge embeds a short text (event title plus Yes/No outcome labels) with OpenRouter `openai/text-embedding-3-small` (768 dimensions, cosine) and upserts the vector plus the full market payload into **Qdrant**. Later syncs refresh prices and other payload fields but do **not** re-embed. Closed, determined, or finalized markets are deleted from the collection.
+
+Docker Compose re-runs sync every hour (`SYNC_INTERVAL_SECONDS=3600`). `OPENROUTER_API_KEY` is required.
+
+### Search
+
+`POST /v1/search` embeds the query with the same model and returns nearest-neighbor markets from Qdrant (compact summaries: question, outcomes, prices/sizes, `end_datetime`, URL — not full resolution rules). Optional filters include category, tags, date ranges, and prices.
+
+Structured lookup without a query:
+
+- `GET /v1/markets` — filtered browse with cursor pagination
+- `GET /v1/markets/{ticker}` — full record, including `description` (resolution rules)
+- `GET /v1/events/{event_ticker}` — all markets in an event, ordered by strike
+- `GET /v1/categories` and `GET /v1/tags` — popular filter values
+
+Search is nearest-neighbor retrieval, not a guaranteed hedge. Without embeddings configured, search returns 503.
+
+### MCP
+
+The MCP server (`http://localhost:8001/mcp`) talks to the REST API, not Qdrant. Tools:
+
+| Tool | Role |
+| --- | --- |
+| `search_markets` | Natural-language semantic search |
+| `browse_markets` | Filtered browse with cursor pagination |
+| `get_market` | Full market, including resolution rules |
+| `get_event` | Strike ladder for one event |
+| `list_categories` / `list_tags` | Popular filter values |
+| `hedge` | Size a buy on one chosen ticker (does not search) |
+| `present_hedge` | Format a sized candidate (or `verdict=none`) as a card |
+
+Also exposed:
+
+- Prompt **`hedge_risk`** — playbook: search → inspect rules → size → present
+- Resource **`openhedge://docs/hedge-math`** — settlement and sizing formulas
+
+Typical agent loop:
+
+1. `search_markets` (or `browse_markets` / `get_event`)
+2. `get_market` on shortlisted tickers; drop poor proxies
+3. `hedge` once per kept ticker
+4. `present_hedge` with `verdict=fit` (or `none` if nothing maps)
+
+Honesty: state **basis risk** (for example hedging diesel with a crude-oil strike). Prefer an honest gap over a forced proxy.
+
+## Hedge math
+
+Only **binary** event contracts are supported. A contract on the chosen side pays **$1.00** if that side resolves and **$0.00** otherwise. Prices are in dollars in `[0, 1]` and are not snapped to cents (deci-cent books quote to 0.001). Contract counts snap to 0.01.
+
+openhedge does not place orders. `hedge` sizes a **buy** at the stored top-of-book ask. It ignores Kalshi trade and rounding fees, so premium and net figures are slightly optimistic versus a real fill.
+
+### Yes / No complement
+
+The book is one pool viewed from two sides:
+
+- YES ask + NO bid = 1.00
+- YES bid + NO ask = 1.00
+- Size at the YES ask equals size at the complementary NO bid
+- Size at the YES bid equals size at the complementary NO ask
+
+Buying YES at price `P` is the same exposure as selling NO at `1 - P`.
+
+Kalshi’s orderbook is bids-only. A YES ask is the complement of the best NO bid. `hedge` uses only that stored top of book. It does not walk deeper levels for a VWAP premium.
+
+- YES: `price = yes_ask_price`, `available_size = yes_ask_size`
+- NO: `price = 1 - yes_bid_price`, `available_size = yes_bid_size`
+
+### How `hedge` sizes a position
+
+Discovery is separate. The agent chooses markets, then calls `hedge` once per ticker with optional `estimated_hit_dollars` and `coverage` (default 1.0).
+
+If `estimated_hit_dollars` is set:
+
+```
+target_payout = estimated_hit_dollars * coverage
+unconstrained_contracts = round(target_payout, 2)
+contracts = min(unconstrained_contracts, round(available_size, 2))
+premium = contracts * price
+gross_payout = contracts          # each contract pays $1
+net_if_pays = estimated_hit_dollars - gross_payout - premium
+net_if_expires = -premium
+coverage_achieved = gross_payout / estimated_hit_dollars
+```
+
+`coverage_achieved` is payout versus modeled loss, not versus requested `coverage`. `liquidity_constrained` is true when top-of-book size is smaller than `unconstrained_contracts`. Size is capped at that quoted ask; remaining size is not filled at worse prices.
+
+If no dollar hit is given, the same formulas run with `target_payout = $1` (unit economics). `net_if_pays` and `net_if_expires` are omitted.
+
+Each call is sized independently against the full hit. Overlapping contracts (same event, several strikes) can overstate coverage.
+
+### Worked example
+
+Suppose the modeled hit is **$10,000**, you want full coverage, and the best YES ask is **$0.20** with plenty of size:
+
+| Quantity | Value |
+| --- | --- |
+| `target_payout` | $10,000 |
+| `contracts` | 10,000.00 |
+| `premium` | $2,000 |
+| `gross_payout` | $10,000 |
+| `coverage_achieved` | 1.0 |
+| `net_if_pays` (event happens) | $10,000 − $10,000 − $2,000 = **−$2,000** |
+| `net_if_expires` (event does not) | **−$2,000** |
+
+You pay $2,000 up front in both worlds. If the event happens, the $10,000 market payout offsets the $10,000 hit, and the leftover is the premium. If the event does not happen, you still spent the premium and the business hit did not land.
+
+If the book only quoted 4,000 contracts, `liquidity_constrained` would be true, `contracts` would be 4,000, `gross_payout` $4,000, and `coverage_achieved` 0.4.
+
+### When none fits
+
+Reject a candidate when the question, Yes/No outcomes, or resolution rules do not map cleanly to the exposure. Compact search hits omit `description`, `can_close_early`, and `early_close_condition` — fetch those with `get_market` before keeping a proxy. If `can_close_early` is true, trading can stop before `end_datetime`; keep the market only if that still covers the exposure window.
+
+State basis risk explicitly. A crude-oil strike is not a diesel bill. A “none fits” card is a valid result, not a failure.
+
+## Development
+
+Lint, format, and types (ruff + mypy) are configured in [`openhedge-core/pyproject.toml`](openhedge-core/pyproject.toml). Prefer matching the pre-commit hooks:
+
+```bash
+uv run --project openhedge-core ruff format --config openhedge-core/pyproject.toml
+uv run --project openhedge-core ruff check --fix --config openhedge-core/pyproject.toml
+uv run --project openhedge-core mypy --config-file openhedge-core/pyproject.toml
+```
+
+```bash
+pre-commit run --all-files
+uv run --project openhedge-core pytest
+```
+
+Use `uv` exclusively from the repo root with `--project openhedge-core`. Never use pip, pip-tools, or poetry.
+
+### Local modules without Compose
+
+Only when developing a single service. Qdrant must already be on `http://localhost:6333`. Settings do not load `.env`; Compose does. Export env first:
+
+```bash
+set -a && source .env && set +a
+```
+
+Then, in order:
+
+```bash
+uv run --project openhedge-core python -m openhedge_core.setup_qdrant
+uv run --project openhedge-core python -m openhedge_core.sync_markets
+uv run --project openhedge-core python -m openhedge_core.server
+uv run --project openhedge-core python -m openhedge_core.mcp_server
 ```
