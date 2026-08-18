@@ -1,7 +1,7 @@
 import logging
 import uuid
 from collections.abc import Sequence
-from typing import Any, ClassVar, Protocol
+from typing import Any, ClassVar, Literal, Protocol
 
 from pydantic import BaseModel
 from qdrant_client import AsyncQdrantClient
@@ -67,6 +67,8 @@ class VectorStore(Protocol):
         limit: int,
         payload_fields: Sequence[str] | None = None,
     ) -> list[tuple[dict[str, Any], float]]: ...
+
+    async def facet_values(self, field: Literal["category", "tags"], *, limit: int) -> list[str]: ...
 
 
 class QdrantVectorStore:
@@ -210,6 +212,15 @@ class QdrantVectorStore:
             with_vectors=False,
         )
         return [(_record_payload(point.payload), float(point.score)) for point in response.points]
+
+    async def facet_values(self, field: Literal["category", "tags"], *, limit: int) -> list[str]:
+        response = await self._client.facet(
+            collection_name=self._collection,
+            key=field,
+            limit=limit,
+            exact=True,
+        )
+        return [hit.value for hit in response.hits if isinstance(hit.value, str)]
 
 
 def _payload_selector(payload_fields: Sequence[str] | None) -> bool | list[str]:

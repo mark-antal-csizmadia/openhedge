@@ -287,3 +287,35 @@ async def test_scroll_and_query_honor_payload_field_mask() -> None:
             payload_fields=["ticker"],
         )
         assert hits[0][0] == {"ticker": "MKT-NEW"}
+
+
+@pytest.mark.asyncio
+async def test_facet_values_returns_unique_categories() -> None:
+    async with qdrant_store() as (_, store):
+        await store.upsert_points(
+            [
+                VectorPoint(id="POL-1", vector=_dense(0), payload={"category": "Politics"}),
+                VectorPoint(id="POL-2", vector=_dense(1), payload={"category": "Politics"}),
+                VectorPoint(id="SPT", vector=_dense(2), payload={"category": "Sports"}),
+            ]
+        )
+
+        values = await store.facet_values("category", limit=10)
+        assert values == ["Politics", "Sports"]
+
+
+@pytest.mark.asyncio
+async def test_facet_values_explodes_tag_arrays_and_honors_limit() -> None:
+    async with qdrant_store() as (_, store):
+        await store.upsert_points(
+            [
+                VectorPoint(id="A", vector=_dense(0), payload={"tags": ["elections", "fed"]}),
+                VectorPoint(id="B", vector=_dense(1), payload={"tags": ["elections"]}),
+                VectorPoint(id="C", vector=_dense(2), payload={"tags": ["nba"]}),
+            ]
+        )
+
+        values = await store.facet_values("tags", limit=10)
+        assert values[0] == "elections"
+        assert set(values) == {"elections", "fed", "nba"}
+        assert await store.facet_values("tags", limit=1) == ["elections"]
