@@ -499,18 +499,29 @@ async def test_list_categories_returns_popularity_order() -> None:
         "truncated": False,
         "limit": DEFAULT_VOCAB_LIMIT,
     }
-    assert store.facet_calls == [{"field": "category", "limit": DEFAULT_VOCAB_LIMIT}]
+    assert store.facet_calls == [{"field": "category", "limit": DEFAULT_VOCAB_LIMIT + 1}]
 
 
 @pytest.mark.asyncio
-async def test_list_categories_truncated_when_facet_fills_limit() -> None:
+async def test_list_categories_truncated_when_more_than_limit() -> None:
+    store = FakeSearchStore()
+    store.facet_result["category"] = ["A", "B", "C", "D"]
+    async with api_client(store) as client:
+        response = await client.get("/v1/categories", params={"limit": 3})
+    assert response.status_code == 200
+    assert response.json() == {"items": ["A", "B", "C"], "truncated": True, "limit": 3}
+    assert store.facet_calls == [{"field": "category", "limit": 4}]
+
+
+@pytest.mark.asyncio
+async def test_list_categories_not_truncated_when_facet_fills_limit() -> None:
     store = FakeSearchStore()
     store.facet_result["category"] = ["A", "B", "C"]
     async with api_client(store) as client:
         response = await client.get("/v1/categories", params={"limit": 3})
     assert response.status_code == 200
-    assert response.json() == {"items": ["A", "B", "C"], "truncated": True, "limit": 3}
-    assert store.facet_calls == [{"field": "category", "limit": 3}]
+    assert response.json() == {"items": ["A", "B", "C"], "truncated": False, "limit": 3}
+    assert store.facet_calls == [{"field": "category", "limit": 4}]
 
 
 @pytest.mark.asyncio
@@ -525,7 +536,7 @@ async def test_list_tags_returns_popular_values() -> None:
         "truncated": False,
         "limit": DEFAULT_VOCAB_LIMIT,
     }
-    assert store.facet_calls == [{"field": "tags", "limit": DEFAULT_VOCAB_LIMIT}]
+    assert store.facet_calls == [{"field": "tags", "limit": DEFAULT_VOCAB_LIMIT + 1}]
 
 
 @pytest.mark.asyncio
@@ -536,7 +547,7 @@ async def test_list_tags_honors_limit_and_truncated() -> None:
         response = await client.get("/v1/tags", params={"limit": 2})
     assert response.status_code == 200
     assert response.json() == {"items": ["elections", "fed"], "truncated": True, "limit": 2}
-    assert store.facet_calls == [{"field": "tags", "limit": 2}]
+    assert store.facet_calls == [{"field": "tags", "limit": 3}]
 
 
 @pytest.mark.asyncio
