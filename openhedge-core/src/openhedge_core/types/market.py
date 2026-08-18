@@ -127,6 +127,20 @@ class Market(MarketSummary):
         default_factory=lambda: datetime.now(tz=timezone.utc),
         description="Timestamp of the last update",
     )
+    can_close_early: bool = Field(
+        default=False,
+        description=(
+            "Whether this market can close before end_datetime. When true, trading may stop "
+            "earlier if early_close_condition is met."
+        ),
+    )
+    early_close_condition: str | None = Field(
+        default=None,
+        description=(
+            "Plain-language condition under which the market can close early. Null when "
+            "can_close_early is false or the source omitted it."
+        ),
+    )
 
     @field_validator("start_datetime")
     @classmethod
@@ -203,6 +217,8 @@ class Market(MarketSummary):
             volume=kalshi_market.volume_fp,
             volume_24hr=kalshi_market.volume_24h_fp,
             open_interest=kalshi_market.open_interest_fp,
+            can_close_early=kalshi_market.can_close_early,
+            early_close_condition=kalshi_market.early_close_condition,
         )
 
 

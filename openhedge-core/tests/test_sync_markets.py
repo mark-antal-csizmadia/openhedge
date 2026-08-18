@@ -37,6 +37,8 @@ MARKET_ACTIVE = {
     "volume_fp": 10.0,
     "volume_24h_fp": 1.0,
     "open_interest_fp": 5.0,
+    "can_close_early": True,
+    "early_close_condition": "This market will close after the nominee is determined.",
 }
 
 MARKET_CLOSED = {
@@ -290,6 +292,8 @@ async def test_from_kalshi_rest_api_uses_series_and_strike_order() -> None:
     assert mapped.series_ticker == "SERIES"
     assert mapped.yes_ask_price == 0.55
     assert mapped.yes_bid_price == 0.45
+    assert mapped.can_close_early is True
+    assert mapped.early_close_condition == "This market will close after the nominee is determined."
 
 
 @pytest.mark.asyncio
