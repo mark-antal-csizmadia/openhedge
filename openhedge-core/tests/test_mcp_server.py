@@ -196,6 +196,7 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "compact" in (by_name["search_markets"].description or "").lower()
     search_description = (by_name["search_markets"].description or "").lower()
     browse_description = (by_name["browse_markets"].description or "").lower()
+    get_market_description = (by_name["get_market"].description or "").lower()
     assert "score" not in search_description
     assert "score" not in browse_description
     assert "end_datetime" in search_description
@@ -204,9 +205,19 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "expired" not in search_description
     assert "expired" not in browse_description
     assert "expired" not in INSTRUCTIONS.lower()
-    assert "all returned markets are open" in search_description
-    assert "all returned markets are open" in browse_description
-    assert "all returned markets are open" in INSTRUCTIONS.lower()
+    assert "all returned markets are open" not in search_description
+    assert "all returned markets are open" not in browse_description
+    assert "all returned markets are open" not in INSTRUCTIONS.lower()
+    assert "catalog is meant to be open" in search_description
+    assert "catalog is meant to be open" in browse_description
+    assert "catalog is meant to be open" in INSTRUCTIONS.lower()
+    assert "catalog is meant to be open" in get_market_description
+    assert "catalog is meant to be open" in get_event_description
+    assert "check end_datetime" in search_description
+    assert "check end_datetime" in browse_description
+    assert "check end_datetime" in INSTRUCTIONS.lower()
+    assert "check end_datetime" in get_market_description
+    assert "check end_datetime" in get_event_description
     assert "compact" in (by_name["get_event"].description or "").lower()
     assert "description" in (by_name["get_market"].description or "").lower()
     assert "category" in (by_name["list_categories"].description or "").lower()
