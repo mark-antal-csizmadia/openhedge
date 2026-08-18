@@ -37,7 +37,8 @@ Workflow:
 1. Use search_markets (try several queries or add filters) when the user describes an exposure in
    prose. Use browse_markets when they already have structured filters. Hits are compact:
    question, outcomes, prices/sizes, end_datetime, and url — not resolution rules.
-   All returned markets are open. Judge relevance from those fields; drop poor proxies.
+   The catalog is meant to be open markets; check end_datetime. Judge relevance from those
+   fields; drop poor proxies.
    Use list_categories and list_tags for the most popular filter values, not a complete catalog.
 2. Use get_event when a strike ladder might fit. It returns all markets for that event,
    ordered by strike_order. Compare question, yes_outcome/no_outcome, and strike_order.
@@ -154,7 +155,7 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         Use this when the user already knows filters such as category, tags, tickers, or price
         ranges, and does not need semantic search. Results are not ranked by relevance. Hits are
         compact (question, outcomes, prices/sizes, end_datetime, url); call get_market for
-        resolution rules. All returned markets are open.
+        resolution rules. The catalog is meant to be open markets; check end_datetime.
 
         Args:
             params: Filters plus page size (default 8, maximum 20) and optional cursor. Keyword
@@ -176,9 +177,9 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         in prose. Hits are compact (question, outcomes, prices/sizes, end_datetime, url). Call
         get_market for resolution rules before keeping a proxy, then hedge with those tickers.
         The upstream API embeds `q` and returns nearest neighbors. Optional filters restrict
-        the candidate set. All returned markets are open. Judge relevance from question,
-        outcomes, prices, and end_datetime; drop poor proxies. This is a single page; refine
-        `q` or add filters rather than paging.
+        the candidate set. The catalog is meant to be open markets; check end_datetime. Judge
+        relevance from question, outcomes, prices, and end_datetime; drop poor proxies. This
+        is a single page; refine `q` or add filters rather than paging.
 
         Args:
             params: Required `q` plus optional filters and `limit` (default 8, maximum 20).
@@ -203,6 +204,7 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         Use after search_markets, browse_markets, or get_event when you need the full record:
         question, resolution rules (`description`), yes/no outcomes, ask/bid prices and sizes,
         volume, and the canonical platform URL. List and event tools omit description.
+        The catalog is meant to be open markets; check end_datetime.
 
         Args:
             ticker: Market primary key, typically taken from a previous page item.
@@ -226,7 +228,8 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
 
         Use when comparing related contracts in the same event (for example a ladder of strikes).
         Markets are compact (question, outcomes, prices/sizes, strike_order); call get_market
-        for resolution rules on shortlisted tickers.
+        for resolution rules on shortlisted tickers. The catalog is meant to be open markets;
+        check end_datetime.
 
         Args:
             event_ticker: Event primary key, typically `event_ticker` from a market record.
