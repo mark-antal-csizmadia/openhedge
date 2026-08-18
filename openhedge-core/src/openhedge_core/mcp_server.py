@@ -19,7 +19,7 @@ from openhedge_core.types.market import Event, Market
 T = TypeVar("T")
 
 DEFAULT_OPENHEDGE_API_URL = "http://127.0.0.1:8000"
-DEFAULT_MCP_HOST = "0.0.0.0"
+DEFAULT_MCP_HOST = "127.0.0.1"
 DEFAULT_MCP_PORT = 8001
 
 logger = logging.getLogger(__name__)
