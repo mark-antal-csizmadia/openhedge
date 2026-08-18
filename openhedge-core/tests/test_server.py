@@ -7,9 +7,11 @@ from typing import Any, Literal
 import httpx
 import pytest
 from openhedge_core.server import (
+    DEFAULT_PAGE_LIMIT,
     DEFAULT_VOCAB_LIMIT,
     EVENT_SCROLL_PAGE_SIZE,
     MAX_EVENT_MARKETS,
+    MAX_PAGE_LIMIT,
     MAX_VOCAB_LIMIT,
     create_app,
 )
@@ -231,6 +233,25 @@ async def test_browse_returns_page_and_forwards_filters() -> None:
 
 
 @pytest.mark.asyncio
+async def test_browse_defaults_limit() -> None:
+    store = FakeSearchStore()
+    store.scroll_result = ([], None)
+    async with api_client(store) as client:
+        response = await client.get("/v1/markets")
+    assert response.status_code == 200
+    assert response.json()["limit"] == DEFAULT_PAGE_LIMIT
+    assert store.scroll_calls[0]["limit"] == DEFAULT_PAGE_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_browse_limit_out_of_range_returns_422() -> None:
+    async with api_client(FakeSearchStore()) as client:
+        too_low = await client.get("/v1/markets", params={"limit": 0})
+        too_high = await client.get("/v1/markets", params={"limit": MAX_PAGE_LIMIT + 1})
+    assert too_low.status_code == 422
+    assert too_high.status_code == 422
+
+
 async def test_browse_skips_invalid_payloads(caplog: pytest.LogCaptureFixture) -> None:
     store = FakeSearchStore()
     valid = _market(ticker="MKT-1")

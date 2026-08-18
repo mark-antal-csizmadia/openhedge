@@ -27,8 +27,8 @@ from openhedge_core.vector_store import (
 
 DEFAULT_OPENROUTER_HTTP_REFERER = "https://openhedge.dev"
 DEFAULT_OPENROUTER_APP_TITLE = "openhedge"
-DEFAULT_PAGE_LIMIT = 20
-MAX_PAGE_LIMIT = 100
+DEFAULT_PAGE_LIMIT = 8
+MAX_PAGE_LIMIT = 20
 DEFAULT_SEARCH_LIMIT = 8
 MAX_SEARCH_LIMIT = 20
 EVENT_SCROLL_PAGE_SIZE = 100
@@ -50,7 +50,7 @@ class MarketListParams(MarketFilters):
         default=DEFAULT_PAGE_LIMIT,
         ge=1,
         le=MAX_PAGE_LIMIT,
-        description="Page size. Defaults to 20, maximum 100.",
+        description="Page size. Defaults to 8, maximum 20.",
     )
     cursor: str | None = Field(
         default=None,

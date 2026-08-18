@@ -240,6 +240,27 @@ async def test_browse_markets_forwards_params() -> None:
 
 
 @pytest.mark.asyncio
+async def test_browse_markets_defaults_limit() -> None:
+    api = FakeApiClient()
+    api.browse_result = MarketPage(items=[], next_cursor=None, limit=8)
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        await client.call_tool("browse_markets", {"params": {}})
+    assert len(api.browse_calls) == 1
+    assert api.browse_calls[0].limit == 8
+
+
+@pytest.mark.asyncio
+async def test_browse_markets_rejects_limit_above_max() -> None:
+    api = FakeApiClient()
+    mcp = create_mcp(api_client=api)
+    async with Client(mcp) as client:
+        with pytest.raises(Exception, match="20"):
+            await client.call_tool("browse_markets", {"params": {"limit": 21}})
+    assert api.browse_calls == []
+
+
+@pytest.mark.asyncio
 async def test_search_markets_forwards_query() -> None:
     api = FakeApiClient()
     market = _market(ticker="MKT-0")
