@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 import signal
 from collections.abc import AsyncIterator, Awaitable, Callable
 
@@ -18,27 +17,12 @@ from openhedge_core.apis.kalshi import (
     produce_open_markets,
 )
 from openhedge_core.consumer import Consumer
-from openhedge_core.embeddings import (
-    DEFAULT_EMBEDDING_MODEL,
-    EMBEDDING_DIM,
-    EmbeddingClient,
-    OpenRouterEmbeddingClient,
-    market_embedding_text,
-)
+from openhedge_core.embeddings import EmbeddingClient, OpenRouterEmbeddingClient, market_embedding_text
 from openhedge_core.producer import Producer
+from openhedge_core.settings import SyncMarketsSettings
 from openhedge_core.types.kalshi import KalshiSeries
 from openhedge_core.types.market import Market
-from openhedge_core.vector_store import (
-    DEFAULT_QDRANT_COLLECTION,
-    DEFAULT_QDRANT_URL,
-    PayloadUpdate,
-    QdrantVectorStore,
-    VectorPoint,
-    VectorStore,
-)
-
-DEFAULT_OPENROUTER_HTTP_REFERER = "https://openhedge.dev"
-DEFAULT_OPENROUTER_APP_TITLE = "openhedge"
+from openhedge_core.vector_store import PayloadUpdate, QdrantVectorStore, VectorPoint, VectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -209,26 +193,26 @@ async def async_main() -> None:
     shutdown_event = asyncio.Event()
     _install_signal_handlers(shutdown_event)
     limiter = AsyncLimiter(max_rate=MAX_RATE, time_period=TIME_PERIOD)
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENROUTER_API_KEY is required")
-    model = os.environ.get("OPENROUTER_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
-    dimensions = int(os.environ.get("OPENROUTER_EMBEDDING_DIM", str(EMBEDDING_DIM)))
+    settings = SyncMarketsSettings()
     qdrant = AsyncQdrantClient(
-        url=os.environ.get("QDRANT_URL", DEFAULT_QDRANT_URL),
-        api_key=os.environ.get("QDRANT_API_KEY") or None,
+        url=settings.qdrant.url,
+        api_key=settings.qdrant.api_key,
     )
     try:
         async with OpenRouter(
-            api_key=api_key,
-            http_referer=DEFAULT_OPENROUTER_HTTP_REFERER,
-            x_open_router_title=DEFAULT_OPENROUTER_APP_TITLE,
+            api_key=settings.openrouter.api_key,
+            http_referer=settings.openrouter.http_referer,
+            x_open_router_title=settings.openrouter.app_title,
         ) as openrouter_client:
             store = QdrantVectorStore(
                 qdrant,
-                collection=os.environ.get("QDRANT_COLLECTION", DEFAULT_QDRANT_COLLECTION),
+                collection=settings.qdrant.collection,
             )
-            embedder = OpenRouterEmbeddingClient(openrouter_client, model=model, dimensions=dimensions)
+            embedder = OpenRouterEmbeddingClient(
+                openrouter_client,
+                model=settings.openrouter.embedding_model,
+                dimensions=settings.openrouter.embedding_dim,
+            )
             async with http_client() as client:
                 await run(
                     client=client,

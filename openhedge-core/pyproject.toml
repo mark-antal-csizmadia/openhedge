@@ -16,6 +16,7 @@ dependencies = [
     "openapi-python-client>=0.29.0",
     "openrouter>=1.1.55",
     "pydantic>=2.11.2,<2.13",
+    "pydantic-settings>=2.15.0",
     "qdrant-client>=1.19.0",
     "tenacity>=9.1.4",
     "uvicorn>=0.52.3",
