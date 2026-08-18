@@ -26,8 +26,6 @@ from openhedge_core.vector_store import PayloadUpdate, QdrantVectorStore, Vector
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 100
-
 HTTP_MAX_CONNECTIONS = 2
 HTTP_MAX_KEEPALIVE_CONNECTIONS = 2
 HTTP_TIMEOUT = 30.0
@@ -142,7 +140,7 @@ async def run(
     limiter: AsyncLimiter,
     embedder: EmbeddingClient,
     store: VectorStore,
-    batch_size: int = BATCH_SIZE,
+    batch_size: int = 100,
     shutdown_event: asyncio.Event | None = None,
 ) -> None:
     shutdown_event = shutdown_event or asyncio.Event()
@@ -220,6 +218,7 @@ async def async_main() -> None:
                     limiter=limiter,
                     embedder=embedder,
                     store=store,
+                    batch_size=settings.batch_size,
                     shutdown_event=shutdown_event,
                 )
     finally:
