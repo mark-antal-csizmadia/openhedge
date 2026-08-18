@@ -53,6 +53,7 @@ class McpServerSettings(_ServiceSettings):
 
 
 class SyncMarketsSettings(_ServiceSettings):
+    batch_size: int = Field(default=100, ge=1)
     qdrant: QdrantSettings = QdrantSettings()
     openrouter: RequiredOpenRouterSettings = Field(
         default_factory=lambda: RequiredOpenRouterSettings.model_construct(api_key=""),

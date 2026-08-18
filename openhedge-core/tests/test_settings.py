@@ -26,6 +26,7 @@ _SETTINGS_ENV = (
     "MCP_HOST",
     "MCP_PORT",
     "OPENHEDGE_API_URL",
+    "BATCH_SIZE",
 )
 
 
@@ -129,6 +130,14 @@ def test_sync_markets_settings_reads_openrouter_api_key(monkeypatch: pytest.Monk
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
     settings = SyncMarketsSettings()
     assert settings.openrouter.api_key == "sk-test"
+    assert settings.batch_size == 100
     assert settings.qdrant.collection == DEFAULT_QDRANT_COLLECTION
     assert settings.qdrant.point_id_namespace == DEFAULT_POINT_ID_NAMESPACE
     assert settings.openrouter.embedding_model == DEFAULT_EMBEDDING_MODEL
+
+
+def test_sync_markets_settings_reads_batch_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setenv("BATCH_SIZE", "50")
+    settings = SyncMarketsSettings()
+    assert settings.batch_size == 50
