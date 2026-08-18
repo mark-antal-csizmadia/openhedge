@@ -22,12 +22,20 @@ class MarketSource(str, Enum):
     KALSHI = "kalshi"
 
 
+PRICE_DECIMALS = 4
+COUNT_DECIMALS = 2
+
+
 def _serialize_datetime(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat()
 
 
-def _serialize_non_negative_float(v: NonNegativeFloat) -> float:
-    return round(v, 2)
+def _serialize_price(v: NonNegativeFloat) -> float:
+    return round(v, PRICE_DECIMALS)
+
+
+def _serialize_count(v: NonNegativeFloat) -> float:
+    return round(v, COUNT_DECIMALS)
 
 
 class MarketSummary(BaseModel):
@@ -79,19 +87,19 @@ class MarketSummary(BaseModel):
 
     @field_serializer("yes_ask_price")
     def serialize_yes_ask_price(self, v: NonNegativeFloat, _info) -> float:
-        return _serialize_non_negative_float(v)
+        return _serialize_price(v)
 
     @field_serializer("yes_ask_size")
     def serialize_yes_ask_size(self, v: NonNegativeFloat, _info) -> float:
-        return _serialize_non_negative_float(v)
+        return _serialize_count(v)
 
     @field_serializer("yes_bid_price")
     def serialize_yes_bid_price(self, v: NonNegativeFloat, _info) -> float:
-        return _serialize_non_negative_float(v)
+        return _serialize_price(v)
 
     @field_serializer("yes_bid_size")
     def serialize_yes_bid_size(self, v: NonNegativeFloat, _info) -> float:
-        return _serialize_non_negative_float(v)
+        return _serialize_count(v)
 
 
 MARKET_SUMMARY_PAYLOAD_FIELDS: tuple[str, ...] = tuple(MarketSummary.model_fields)
@@ -144,15 +152,15 @@ class Market(MarketSummary):
 
     @field_serializer("volume")
     def serialize_volume(self, v: NonNegativeFloat, _info) -> float:
-        return _serialize_non_negative_float(v)
+        return _serialize_count(v)
 
     @field_serializer("volume_24hr")
     def serialize_volume_24hr(self, v: NonNegativeFloat, _info) -> float:
-        return _serialize_non_negative_float(v)
+        return _serialize_count(v)
 
     @field_serializer("open_interest")
     def serialize_open_interest(self, v: NonNegativeFloat, _info) -> float:
-        return _serialize_non_negative_float(v)
+        return _serialize_count(v)
 
     def payload(self) -> dict[str, Any]:
         return self.model_dump(mode="json")

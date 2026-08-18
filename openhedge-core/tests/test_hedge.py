@@ -129,3 +129,16 @@ def test_size_hedge_yes_and_no_are_independent() -> None:
     assert no_candidate.side == "no"
     assert no_candidate.price_per_contract == pytest.approx(0.65)
     assert no_candidate.premium_dollars == pytest.approx(32.5)
+
+
+def test_size_hedge_keeps_deci_cent_yes_ask() -> None:
+    market = _market(ticker="KXGOVFLNOMR-26-JFIS", yes_ask_price=0.013, yes_ask_size=429905.49)
+    candidate = size_hedge(
+        market,
+        HedgeParams(ticker=market.ticker, estimated_hit_dollars=10000.0, coverage=1.0, side="yes"),
+    )
+    assert candidate.price_per_contract == pytest.approx(0.013)
+    assert candidate.contracts == pytest.approx(10000.0)
+    assert candidate.premium_dollars == pytest.approx(130.0)
+    assert candidate.gross_payout_dollars == pytest.approx(10000.0)
+    assert candidate.liquidity_constrained is False
