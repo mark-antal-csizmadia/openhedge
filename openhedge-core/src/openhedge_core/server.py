@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request
 from openrouter import OpenRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from qdrant_client import AsyncQdrantClient
 
 from openhedge_core.embeddings import (
@@ -178,7 +178,7 @@ async def browse_markets(
         payload_fields=MARKET_SUMMARY_PAYLOAD_FIELDS,
     )
     return MarketPage(
-        items=[MarketSummary.model_validate(payload) for payload in payloads],
+        items=_market_summaries(payloads),
         next_cursor=next_cursor,
         limit=params.limit,
     )
@@ -204,7 +204,7 @@ async def search_markets(
         payload_fields=MARKET_SUMMARY_PAYLOAD_FIELDS,
     )
     return MarketPage(
-        items=[MarketSummary.model_validate(payload) for payload in payloads],
+        items=_market_summaries(payloads),
         next_cursor=None,
         limit=params.limit,
     )
@@ -233,9 +233,9 @@ async def get_event(request: Request, event_ticker: str) -> Event:
         payloads.extend(page)
         if cursor is None:
             break
-    if not payloads:
+    markets = _market_summaries(payloads)
+    if not markets:
         raise HTTPException(status_code=404, detail="event not found")
-    markets = [MarketSummary.model_validate(payload) for payload in payloads]
     return Event.from_markets(markets, limit=MAX_EVENT_MARKETS)
 
 
@@ -260,6 +260,17 @@ async def _list_vocab(
 ) -> VocabList:
     values = await store.facet_values(field, limit=params.limit)
     return VocabList(items=values, truncated=len(values) == params.limit, limit=params.limit)
+
+
+def _market_summaries(payloads: list[dict[str, Any]]) -> list[MarketSummary]:
+    items: list[MarketSummary] = []
+    for payload in payloads:
+        try:
+            items.append(MarketSummary.model_validate(payload))
+        except ValidationError as exc:
+            ticker = payload.get("ticker")
+            logger.warning("skipping invalid market payload ticker=%s: %s", ticker, exc)
+    return items
 
 
 app = create_app()

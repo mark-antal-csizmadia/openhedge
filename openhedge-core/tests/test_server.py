@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -230,6 +231,24 @@ async def test_browse_returns_page_and_forwards_filters() -> None:
 
 
 @pytest.mark.asyncio
+async def test_browse_skips_invalid_payloads(caplog: pytest.LogCaptureFixture) -> None:
+    store = FakeSearchStore()
+    valid = _market(ticker="MKT-1")
+    bad = valid.payload()
+    bad["ticker"] = "MKT-BAD"
+    del bad["question"]
+    store.scroll_result = ([valid.payload(), bad], "next-page")
+    with caplog.at_level(logging.WARNING, logger="openhedge_core.server"):
+        async with api_client(store) as client:
+            response = await client.get("/markets")
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["ticker"] for item in body["items"]] == ["MKT-1"]
+    assert body["next_cursor"] == "next-page"
+    assert "MKT-BAD" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_search_embeds_query_and_returns_neighbors() -> None:
     store = FakeSearchStore()
     embedder = RecordingEmbedder([1.0, 0.0, 0.0])
@@ -253,6 +272,24 @@ async def test_search_embeds_query_and_returns_neighbors() -> None:
     conditions = [condition for condition in (call["filters"].must or []) if isinstance(condition, FieldCondition)]
     assert conditions[0].key == "tags"
     assert conditions[0].match == MatchValue(value="fed")
+
+
+@pytest.mark.asyncio
+async def test_search_skips_invalid_payloads(caplog: pytest.LogCaptureFixture) -> None:
+    store = FakeSearchStore()
+    embedder = RecordingEmbedder()
+    valid = _market(ticker="MKT-1")
+    bad = valid.payload()
+    bad["ticker"] = "MKT-BAD"
+    del bad["question"]
+    store.query_result = [valid.payload(), bad]
+    with caplog.at_level(logging.WARNING, logger="openhedge_core.server"):
+        async with api_client(store, embedder) as client:
+            response = await client.post("/search", json={"q": "oil"})
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["ticker"] for item in body["items"]] == ["MKT-1"]
+    assert "MKT-BAD" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -358,6 +395,33 @@ async def test_get_event_caps_markets_and_sets_truncated() -> None:
 async def test_get_event_missing_returns_404() -> None:
     async with api_client(FakeSearchStore()) as client:
         response = await client.get("/events/MISSING")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_event_skips_invalid_payloads() -> None:
+    store = FakeSearchStore()
+    valid = _market(ticker="MKT-1")
+    bad = valid.payload()
+    bad["ticker"] = "MKT-BAD"
+    del bad["question"]
+    store.scroll_result = ([valid.payload(), bad], None)
+    async with api_client(store) as client:
+        response = await client.get("/events/EVT-OPEN")
+    assert response.status_code == 200
+    body = response.json()
+    assert [market["ticker"] for market in body["markets"]] == ["MKT-1"]
+    assert body["market_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_event_all_invalid_payloads_returns_404() -> None:
+    store = FakeSearchStore()
+    bad = _market(ticker="MKT-BAD").payload()
+    del bad["question"]
+    store.scroll_result = ([bad], None)
+    async with api_client(store) as client:
+        response = await client.get("/events/EVT-OPEN")
     assert response.status_code == 404
 
 
