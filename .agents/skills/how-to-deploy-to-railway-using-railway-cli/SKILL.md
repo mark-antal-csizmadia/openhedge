@@ -19,7 +19,7 @@ Local Compose is a different path — [how-to-get-started](../how-to-get-started
 - [ ] railway login; project linked
 - [ ] Qdrant template (private)
 - [ ] api (PORT=8000, Qdrant vars, railway up)
-- [ ] sync (same Qdrant vars, railway up, manual redeploy for first ingest)
+- [ ] sync (same Qdrant vars, railway up, Run now mutation, watch ingest logs)
 - [ ] mcp (PORT=8001, OPENHEDGE_API_URL with :8000, railway up, no public domain)
 - [ ] caddy (PORT=8080, UPSTREAM_URL with :8001, railway up, public domain)
 - [ ] smoke /health and /mcp on the Caddy hostname
@@ -95,11 +95,41 @@ railway variable set \
 cp deploy/railway/sync.toml railway.toml
 railway up . --service sync --path-as-root
 rm railway.toml
-
-railway service redeploy --service sync --yes
 ```
 
-The first cron tick may wait until `:00`; the redeploy runs ingest now. Search stays empty until that pass finishes.
+Wait until that deploy is SUCCESS (not INITIALIZING). `railway up` only builds the image and registers the hourly schedule; the first tick waits until `:00` UTC. `railway service redeploy` is **not** Run now (it runs `setup_qdrant` then stops). Trigger one execution with `deploymentInstanceExecutionCreate`. That does not change `cronSchedule` or other service settings. Use the service **instance** id, not the service id.
+
+```bash
+python3 - <<'PY'
+import json, subprocess
+
+def sh(*args):
+    return subprocess.check_output(args, text=True)
+
+status = json.loads(sh("railway", "status", "--json"))
+env_id = status["environments"]["edges"][0]["node"]["id"]
+svc_id = next(e["node"]["id"] for e in status["services"]["edges"] if e["node"]["name"] == "sync")
+inst = json.loads(sh(
+    "railway", "api",
+    "--var", f"environmentId={json.dumps(env_id)}",
+    "--var", f"serviceId={json.dumps(svc_id)}",
+    "query($environmentId: String!, $serviceId: String!) { serviceInstance(environmentId: $environmentId, serviceId: $serviceId) { id } }",
+))
+instance_id = inst["data"]["serviceInstance"]["id"]
+out = json.loads(sh(
+    "railway", "api",
+    "--variables", json.dumps({"input": {"serviceInstanceId": instance_id}}),
+    "mutation($input: DeploymentInstanceExecutionCreateInput!) { deploymentInstanceExecutionCreate(input: $input) { id status } }",
+))
+print(json.dumps(out, indent=2))
+if out.get("errors") or not (out.get("data") or {}).get("deploymentInstanceExecutionCreate"):
+    raise SystemExit("Run now failed; wait until sync is idle and retry. Do not railway service redeploy.")
+PY
+
+railway logs --service sync --latest --lines 80
+```
+
+Ingest has started when logs show `open batch created=` (or later `updated=`). `setup_qdrant` then `Stopping Container` is only the pre-deploy hook. Search stays empty until the pass finishes. If a previous execution is still Active, Railway skips the new run — wait for it to exit, then retry the mutation. You may continue with mcp / caddy once ingest lines appear; the first fill can take a long time.
 
 ## 4. mcp
 
@@ -178,5 +208,5 @@ Confirm `sync` logs a successful `sync_markets` pass. `api` and `mcp` `/health` 
 - Do not attach a Railway public domain to `mcp`.
 - Reference `Qdrant` (template name), not `qdrant`.
 - `OPENROUTER_API_KEY` on api and sync only. MCP talks only to the API. Caddy talks only to MCP.
-- Cron `sync` does not stay running; use `railway service redeploy --service sync --yes` for a first fill.
+- Cron `sync` does not stay running; after `railway up`, trigger one run with `deploymentInstanceExecutionCreate` (service **instance** id). Do not `railway service redeploy`. Confirm logs show `open batch created=`, not only `setup_qdrant`.
 - Use `uv` for repo work; Railway builds API/MCP/sync from [`openhedge-core/Dockerfile`](../../../openhedge-core/Dockerfile) and Caddy from [`deploy/caddy/Dockerfile`](../../../deploy/caddy/Dockerfile).
