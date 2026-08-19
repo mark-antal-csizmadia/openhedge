@@ -1,24 +1,24 @@
 ---
-name: how-to-deploy-to-railway-with-cloudflare-tunnel
+name: how-to-add-cloudflare-tunnel
 description: >-
-  Puts a Cloudflare Tunnel in front of the Railway Caddy edge for a custom
-  domain, WAF, and rate limits. Use when the user asks for a Cloudflare
-  tunnel, showcase/prod hostname, or edge rate limiting — not for a generic
-  Railway deploy.
+  Adds Cloudflare Tunnel in front of an existing Railway Caddy edge for a
+  custom domain, WAF, and rate limits. Use when the user asks for a Cloudflare
+  tunnel, showcase/prod hostname, or edge rate limiting. Requires the Railway
+  stack already up. Do not add cloudflared to the published template.
 ---
 
-# How to deploy to Railway with Cloudflare Tunnel
+# How to add a Cloudflare Tunnel
 
-Operator path for a showcase or production hostname. Same Caddy + private MCP as the OSS stack; the only topology change is **Cloudflare-only ingress**.
+Add-on on an existing hosted stack. Same Caddy + private MCP; the only topology change is **Cloudflare-only ingress** (custom hostname, WAF, rate limits).
 
-Do **not** attach a Railway public domain to `caddy` or `mcp`. A `*.up.railway.app` hostname bypasses Cloudflare WAF and rate limits. Do not invent `TUNNEL_TOKEN` or `OPENROUTER_API_KEY`. Do not add `cloudflared` to the published Railway template.
+Do **not** leave a Railway public domain on `caddy` or `mcp`. A `*.up.railway.app` hostname bypasses Cloudflare WAF and rate limits. Do not invent `TUNNEL_TOKEN` or `OPENROUTER_API_KEY`. Do not add `cloudflared` to the published Railway template.
 
-Forks and the one-click template stay on [how-to-deploy-to-railway-using-railway-cli](../how-to-deploy-to-railway-using-railway-cli/SKILL.md) (Railway domain on **caddy**).
+If the five services are not up yet, follow [how-to-deploy-to-railway](../how-to-deploy-to-railway/SKILL.md) first (skip `railway domain --service caddy`), or use the README **Deploy on Railway** button. One-click template users also start here after the stack exists. Do not generate a marketplace template from a project that includes this tunnel — [how-to-publish-railway-template](../how-to-publish-railway-template/SKILL.md) needs a project without `cloudflared`.
 
 ## Workflow
 
 ```
-- [ ] OSS Railway stack already up (or run the CLI skill first)
+- [ ] Railway stack already up (deploy skill or one-click template)
 - [ ] User has a domain on Cloudflare and a tunnel token
 - [ ] Delete Railway public domains on caddy and mcp
 - [ ] Deploy cloudflared (cf-tunnel template)
@@ -36,7 +36,7 @@ Caddy is already the edge (`PORT=8080`, `UPSTREAM_URL` → `mcp:8001`). This ski
 - Tunnel token (the long `--token` value from the Docker run snippet — not the whole command)
 - Railway CLI linked to the same project as the OSS stack
 
-Never invent the token. If the OSS stack is not up, follow the CLI skill first (skip `railway domain --service caddy`).
+Never invent the token. If the OSS stack is not up, follow [how-to-deploy-to-railway](../how-to-deploy-to-railway/SKILL.md) first (skip `railway domain --service caddy`).
 
 ## 1. Confirm Caddy is the edge
 
@@ -45,7 +45,7 @@ railway variable list --service caddy
 railway variable list --service mcp
 ```
 
-Expect `PORT=8080` and `UPSTREAM_URL=${{mcp.RAILWAY_PRIVATE_DOMAIN}}:8001` (host:port, no `http://`) on **caddy**, `PORT=8001` on **mcp**. Fix with the CLI skill’s Caddy/MCP steps if those are wrong. Caddy `/health` is local; `/mcp` and `/ready` proxy to MCP.
+Expect `PORT=8080` and `UPSTREAM_URL=${{mcp.RAILWAY_PRIVATE_DOMAIN}}:8001` (host:port, no `http://`) on **caddy**, `PORT=8001` on **mcp**. Fix with the deploy skill’s Caddy/MCP steps if those are wrong. Caddy `/health` is local; `/mcp` and `/ready` proxy to MCP.
 
 ## 2. Detach Railway public domains
 
@@ -132,3 +132,4 @@ If health works on a Railway `*.up.railway.app` URL but not on `mcp.<domain>`, a
 - SSL **Flexible** will fail or loop; use **Full**.
 - Do not invent `TUNNEL_TOKEN`. Do not commit it. Do not put it in the OSS template.
 - Bot Fight on `/mcp` blocks Cursor and other MCP clients.
+- Do not generate the marketplace template from this project after adding `cloudflared`.

@@ -15,9 +15,9 @@ Blanket is independently published and powered by Kalshi. It does not hold money
 This repo ships Cursor agent skills. If you are using Cursor (or another agent that can follow a skill file), point it at these rather than improvising setup:
 
 - [`.agents/skills/how-to-get-started/SKILL.md`](.agents/skills/how-to-get-started/SKILL.md) — install, `.env`, Docker Compose, health checks
-- [`.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md`](.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md) — Railway CLI: Qdrant template, api, sync cron, private MCP, public Caddy
-- [`.agents/skills/how-to-create-a-railway-template/SKILL.md`](.agents/skills/how-to-create-a-railway-template/SKILL.md) — GitHub-sourced scratch project and marketplace template (not `railway up`)
-- [`.agents/skills/how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md) — showcase/prod: Cloudflare Tunnel in front of Caddy (no Railway public domain)
+- [`.agents/skills/how-to-deploy-to-railway/SKILL.md`](.agents/skills/how-to-deploy-to-railway/SKILL.md) — self-host on Railway: GitHub-sourced Qdrant, api, sync cron, private MCP, public Caddy
+- [`.agents/skills/how-to-publish-railway-template/SKILL.md`](.agents/skills/how-to-publish-railway-template/SKILL.md) — generate and publish the marketplace template from that stack
+- [`.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md) — add-on: Cloudflare Tunnel in front of Caddy (custom domain, WAF, rate limits)
 - [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/skills/try-hedging-examples/SKILL.md) — connect MCP and run Blanket-style example prompts
 
 [`AGENTS.md`](AGENTS.md) already tells agents to follow those skills.
@@ -28,7 +28,7 @@ One-click hosted stack (Qdrant, market sync, REST API, private MCP, public Caddy
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/<TEMPLATE_CODE>?utm_medium=integration&utm_source=button&utm_campaign=openhedge)
 
-Replace `<TEMPLATE_CODE>` after the template is published (see below). Until then, deploy with the Railway CLI ([`.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md`](.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md)) or run Docker Compose locally.
+Replace `<TEMPLATE_CODE>` after the template is published (see below). Until then, self-host with [`.agents/skills/how-to-deploy-to-railway/SKILL.md`](.agents/skills/how-to-deploy-to-railway/SKILL.md) or run Docker Compose locally.
 
 The template creates five services:
 
@@ -52,17 +52,17 @@ Point an MCP client at `https://<caddy-domain>/mcp` (the Railway-generated domai
 }
 ```
 
-Railway runs `python -m openhedge_core.sync_markets` on an hourly cron (`0 * * * *`); the replica is down between runs. The first tick may wait until the next hour — the CLI skill runs one Railway Run now after creating `sync` (`deploymentInstanceExecutionCreate`; not `railway service redeploy`). `/v1/search` and MCP search stay empty until that pass finishes. Check `sync` logs for `open batch created=`; `GET /ready` on `api` (private) reports Qdrant and whether the embedder is configured.
+Railway runs `python -m openhedge_core.sync_markets` on an hourly cron (`0 * * * *`); the replica is down between runs. The first tick may wait until the next hour — the deploy skill runs one Railway Run now after creating `sync` (`deploymentInstanceExecutionCreate`; not `railway service redeploy`). `/v1/search` and MCP search stay empty until that pass finishes. Check `sync` logs for `open batch created=`; `GET /ready` on `api` (private) reports Qdrant and whether the embedder is configured.
 
 Config-as-code for the GitHub-sourced services lives in [`deploy/railway/`](deploy/railway/). Caddy’s image is [`deploy/caddy/`](deploy/caddy/). There is no root `railway.toml` (that file would apply to every service).
 
 ### Showcase (Cloudflare Tunnel)
 
-For a custom hostname with Cloudflare WAF / rate limits, follow [`.agents/skills/how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md). That path uses the same Caddy service: delete the Railway public domain on `caddy` (and `mcp` if one exists), deploy `cloudflared`, and point `mcp.<your-domain>` at `caddy.railway.internal:8080`. Do not leave a Railway public hostname on Caddy — it bypasses Cloudflare. Do not put `cloudflared` or `TUNNEL_TOKEN` in the published template.
+For a custom hostname with Cloudflare WAF / rate limits, follow [`.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md) after the stack is up (deploy skill or one-click template). That add-on uses the same Caddy service: delete the Railway public domain on `caddy` (and `mcp` if one exists), deploy `cloudflared`, and point `mcp.<your-domain>` at `caddy.railway.internal:8080`. Do not leave a Railway public hostname on Caddy — it bypasses Cloudflare. Do not put `cloudflared` or `TUNNEL_TOKEN` in the published template.
 
 ### Publish the template (maintainers)
 
-Follow [`.agents/skills/how-to-create-a-railway-template/SKILL.md`](.agents/skills/how-to-create-a-railway-template/SKILL.md). Do not generate a template from a `railway up` project (those sources cannot be packaged). Qdrant is the Docker image `qdrant/qdrant:v1.19.0` with no API key (private only). After publish, replace `<TEMPLATE_CODE>` in the Deploy button URL above.
+Follow [`.agents/skills/how-to-publish-railway-template/SKILL.md`](.agents/skills/how-to-publish-railway-template/SKILL.md) after the GitHub-sourced stack is up ([`.agents/skills/how-to-deploy-to-railway/SKILL.md`](.agents/skills/how-to-deploy-to-railway/SKILL.md)), without `cloudflared`. Qdrant is the Docker image `qdrant/qdrant:v1.19.0` with no API key (private only). After publish, replace `<TEMPLATE_CODE>` in the Deploy button URL above.
 
 ## Getting started
 

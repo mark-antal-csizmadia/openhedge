@@ -1,29 +1,26 @@
 ---
-name: how-to-create-a-railway-template
+name: how-to-deploy-to-railway
 description: >-
-  Builds a template-safe Railway scratch project (Qdrant Docker image, GitHub
-  sources, no railway up) and generates the marketplace template. Use when the
-  user wants to create, generate, or publish a Railway template, or when
-  Generate Template fails with "does not have a source".
+  Deploys the GitHub-sourced Railway stack (Qdrant Docker image, api, sync
+  cron, private MCP, public Caddy). Use when the user wants to self-host on
+  Railway, fork and deploy, or stand up services with source connect — not to
+  publish a marketplace template or add Cloudflare.
 ---
 
-# How to create a Railway template
+# How to deploy to Railway
 
-Scratch project for **Generate Template**. Do not generate from a `railway up` deploy. Do not invent `OPENROUTER_API_KEY`. Never commit a root `railway.toml`. Never use `pip`. Ask the user for the OpenRouter key if it is missing.
+GitHub-sourced hosted stack from this repo or a fork. Do not invent `OPENROUTER_API_KEY`. Never commit a root `railway.toml`. Never use `pip`. Ask the user for the OpenRouter key if it is missing. Do not `railway up` (local upload cannot be templated later).
 
-A hosted stack to *run* (local snapshot) is [how-to-deploy-to-railway-using-railway-cli](../how-to-deploy-to-railway-using-railway-cli/SKILL.md). Cloudflare Tunnel is [how-to-deploy-to-railway-with-cloudflare-tunnel](../how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md) — do not add `cloudflared` here.
-
-Templates can only copy **GitHub** or **Docker image** sources. `railway up` (local upload) and nested marketplace templates (`i1tz3T`, official Caddy) fail with `Service <name> does not have a source that can be used to generate a template`.
+Local Compose is [how-to-get-started](../how-to-get-started/SKILL.md). To publish a marketplace template from this project, follow [how-to-publish-railway-template](../how-to-publish-railway-template/SKILL.md) after Verify. For a custom domain, WAF, and rate limits, follow [how-to-add-cloudflare-tunnel](../how-to-add-cloudflare-tunnel/SKILL.md) after the stack is up. Do not add `cloudflared` here — a project used for Generate Template must stay template-safe.
 
 ## Workflow
 
 ```
-- [ ] railway login; GitHub connected; new scratch project
+- [ ] railway login; GitHub connected; project linked
 - [ ] Qdrant image + volume (private, no API key)
 - [ ] api, then sync, then mcp, then caddy (config file → vars → GitHub)
 - [ ] public domain only on caddy; smoke /health
 - [ ] sync Run now; logs show open batch created=
-- [ ] railway templates create; mark OPENROUTER_API_KEY required; publish
 ```
 
 **Order:** `Qdrant` → `api` and `sync` → `mcp` → `caddy`. Create app services **one at a time** (a tight `railway add` loop can return an empty body).
@@ -37,7 +34,7 @@ Qdrant has **no API key** (same as local Compose). Keep it private. Empty `QDRAN
 ## Prerequisites
 
 - [Railway CLI](https://docs.railway.com/cli)
-- GitHub connected in Railway with access to this repo
+- GitHub connected in Railway with access to this repo or the user’s fork
 - OpenRouter API key on **api** and **sync** only
 
 ```bash
@@ -45,23 +42,23 @@ export OPENROUTER_API_KEY='sk-or-...'   # from the user; never invent
 export REPO="$(git remote get-url origin | sed -E 's#.*github.com[:/](.+)(\.git)?#\1#' | sed 's/\.git$//')"
 
 railway login
-railway init --name openhedge-template
+railway init --name openhedge    # or: railway link
 ```
 
-Confirm `REPO` is `owner/openhedge` (no `.git`). If a CLI-uploaded project is already linked, `railway init` a **new** project instead of generating from that one.
+Confirm `REPO` is `owner/openhedge` with no `.git` (upstream or a fork such as `their-user/openhedge`). Railway must have GitHub access to that repo. `source connect` uses branch `main`.
 
 ## Helpers
 
 Scripts live next to this skill. Run them from the **repo root**. `railwayConfigFile` is not a CLI flag.
 
 ```bash
-python3 .agents/skills/how-to-create-a-railway-template/scripts/set_railway_config_file.py api /deploy/railway/api.toml
+python3 .agents/skills/how-to-deploy-to-railway/scripts/set_railway_config_file.py api /deploy/railway/api.toml
 ```
 
 If `railway add --service <name>` returns `error decoding response body`, wait and retry once. Fallback:
 
 ```bash
-python3 .agents/skills/how-to-create-a-railway-template/scripts/create_empty_service.py caddy
+python3 .agents/skills/how-to-deploy-to-railway/scripts/create_empty_service.py caddy
 ```
 
 ## 1. Qdrant
@@ -86,7 +83,7 @@ Wait until `Qdrant` is running before `api` / `sync` (pre-deploy `setup_qdrant` 
 
 ```bash
 railway add --service api --json
-python3 .agents/skills/how-to-create-a-railway-template/scripts/set_railway_config_file.py api /deploy/railway/api.toml
+python3 .agents/skills/how-to-deploy-to-railway/scripts/set_railway_config_file.py api /deploy/railway/api.toml
 
 railway variable set \
   'QDRANT_URL=http://${{Qdrant.RAILWAY_PRIVATE_DOMAIN}}:6333' \
@@ -105,7 +102,7 @@ Hourly cron (`0 * * * *`), `restartPolicyType = NEVER`. No HTTP port. No `QDRANT
 
 ```bash
 railway add --service sync --json
-python3 .agents/skills/how-to-create-a-railway-template/scripts/set_railway_config_file.py sync /deploy/railway/sync.toml
+python3 .agents/skills/how-to-deploy-to-railway/scripts/set_railway_config_file.py sync /deploy/railway/sync.toml
 
 railway variable set \
   'QDRANT_URL=http://${{Qdrant.RAILWAY_PRIVATE_DOMAIN}}:6333' \
@@ -155,7 +152,7 @@ Private. Pin `PORT=8001`.
 
 ```bash
 railway add --service mcp --json
-python3 .agents/skills/how-to-create-a-railway-template/scripts/set_railway_config_file.py mcp /deploy/railway/mcp.toml
+python3 .agents/skills/how-to-deploy-to-railway/scripts/set_railway_config_file.py mcp /deploy/railway/mcp.toml
 
 railway variable set \
   'OPENHEDGE_API_URL=http://${{api.RAILWAY_PRIVATE_DOMAIN}}:8000' \
@@ -177,7 +174,7 @@ Public edge. [`deploy/caddy/Caddyfile`](../../../deploy/caddy/Caddyfile) answers
 
 ```bash
 railway add --service caddy --json
-python3 .agents/skills/how-to-create-a-railway-template/scripts/set_railway_config_file.py caddy /deploy/railway/caddy.toml
+python3 .agents/skills/how-to-deploy-to-railway/scripts/set_railway_config_file.py caddy /deploy/railway/caddy.toml
 
 railway variable set \
   'UPSTREAM_URL=${{mcp.RAILWAY_PRIVATE_DOMAIN}}:8001' \
@@ -189,6 +186,8 @@ railway domain --service caddy
 ```
 
 Literal `:8001` in `UPSTREAM_URL` (same as pinned `mcp` `PORT`). Do **not** prefix `http://` — Caddy `{http.*}` placeholders swallow the host and the replica dials `:8001` on itself; Railway then fails `/health` with “service unavailable”.
+
+If the next step is Cloudflare Tunnel, skip `railway domain --service caddy` (or delete that hostname in [how-to-add-cloudflare-tunnel](../how-to-add-cloudflare-tunnel/SKILL.md)). A `*.up.railway.app` hostname bypasses WAF and rate limits.
 
 Do not `source connect` a service that is already on this repo. Point the client at `https://<caddy-domain>/mcp`.
 
@@ -211,31 +210,9 @@ curl -sS "https://<caddy-domain>/ready"    # MCP via Caddy
 
 Confirm `sync` logs a successful `sync_markets` pass. `api` and `mcp` `/health` are private. If Caddy healthcheck says “service unavailable”, `UPSTREAM_URL` still has `http://` or Caddy is proxying `/health` to MCP.
 
-## Generate and publish
-
-```bash
-railway templates create --json
-```
-
-In the template editor:
-
-1. Mark `OPENROUTER_API_KEY` required (api + sync).
-2. Public HTTP only on **caddy**.
-3. Do not include `cloudflared` or `TUNNEL_TOKEN`.
-4. Do not add a Qdrant API key.
-
-Then publish and put the template code in the README Deploy button (`<TEMPLATE_CODE>`):
-
-```bash
-railway templates publish <TEMPLATE_CODE> \
-  --category Other \
-  --description "Discover hedges in event contracts and prediction markets" \
-  --readme-file README.md
-```
-
 ## Pitfalls
 
-- Do not `railway up`. Do not generate a template from a CLI-upload project.
+- Do not `railway up`. Use GitHub `source connect`.
 - Do not use `railway deploy --template i1tz3T` or a Caddy marketplace template as a nested source.
 - Do not set `QDRANT_API_KEY` or `QDRANT__SERVICE__API_KEY`.
 - `railwayConfigFile` before `source connect`. There is no root `railway.toml`.
@@ -249,3 +226,4 @@ railway templates publish <TEMPLATE_CODE> \
 - Reference `Qdrant` (canvas name), not `qdrant`.
 - `OPENROUTER_API_KEY` on api and sync only.
 - Cron `sync`: Run now via `deploymentInstanceExecutionCreate`. Do not `railway service redeploy`. Confirm `open batch created=`, not only `setup_qdrant`.
+- Do not add `cloudflared` or `TUNNEL_TOKEN` if this project will be used to generate the marketplace template.
