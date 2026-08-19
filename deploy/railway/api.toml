@@ -4,7 +4,7 @@ dockerfilePath = "openhedge-core/Dockerfile"
 
 [deploy]
 preDeployCommand = ["python -m openhedge_core.setup_qdrant"]
-startCommand = "python -m openhedge_core.server"
+startCommand = "/bin/sh -c 'export API_HOST=0.0.0.0 API_PORT=\"$PORT\"; exec python -m openhedge_core.server'"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 numReplicas = 1
