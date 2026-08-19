@@ -25,7 +25,6 @@ _SETTINGS_ENV = (
     "API_PORT",
     "MCP_HOST",
     "MCP_PORT",
-    "PORT",
     "OPENHEDGE_API_URL",
     "BATCH_SIZE",
 )
@@ -119,19 +118,6 @@ def test_mcp_aliases(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = McpServerSettings()
     assert settings.api_url == "http://api:8000"
     assert settings.host == "0.0.0.0"
-    assert settings.port == 8001
-
-
-def test_mcp_port_falls_back_to_port(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PORT", "8080")
-    settings = McpServerSettings()
-    assert settings.port == 8080
-
-
-def test_mcp_port_wins_over_port(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PORT", "8080")
-    monkeypatch.setenv("MCP_PORT", "8001")
-    settings = McpServerSettings()
     assert settings.port == 8001
 
 

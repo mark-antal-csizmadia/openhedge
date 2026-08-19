@@ -15,6 +15,7 @@ Blanket is independently published and powered by Kalshi. It does not hold money
 This repo ships Cursor agent skills. If you are using Cursor (or another agent that can follow a skill file), point it at these rather than improvising setup:
 
 - [`.agents/skills/how-to-get-started/SKILL.md`](.agents/skills/how-to-get-started/SKILL.md) — install, `.env`, Docker Compose, health checks
+- [`.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md`](.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md) — Railway CLI: Qdrant template, api, sync cron, public MCP
 - [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/skills/try-hedging-examples/SKILL.md) — connect MCP and run Blanket-style example prompts
 
 [`AGENTS.md`](AGENTS.md) already tells agents to follow those skills.
@@ -25,7 +26,7 @@ One-click hosted stack (Qdrant, market sync, REST API, public MCP). You will be 
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/<TEMPLATE_CODE>?utm_medium=integration&utm_source=button&utm_campaign=openhedge)
 
-Replace `<TEMPLATE_CODE>` after the template is published (see below). Until then, use Docker Compose locally.
+Replace `<TEMPLATE_CODE>` after the template is published (see below). Until then, deploy with the Railway CLI ([`.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md`](.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md)) or run Docker Compose locally.
 
 The template creates four services:
 
@@ -66,16 +67,16 @@ These steps run in the Railway dashboard after this repo is on `main`:
    QDRANT__STORAGE__STORAGE_PATH=/qdrant/storage
 
    # api + sync
-   QDRANT_URL=http://${{qdrant.RAILWAY_PRIVATE_DOMAIN}}:6333
-   QDRANT_API_KEY=${{qdrant.QDRANT__SERVICE__API_KEY}}
+   QDRANT_URL=http://${{Qdrant.RAILWAY_PRIVATE_DOMAIN}}:6333
+   QDRANT_API_KEY=${{Qdrant.QDRANT__SERVICE__API_KEY}}
    OPENROUTER_API_KEY=<required>
-   API_HOST=0.0.0.0
-   API_PORT=8000
+   PORT=8000
 
    # mcp
    OPENHEDGE_API_URL=http://${{api.RAILWAY_PRIVATE_DOMAIN}}:8000
-   MCP_HOST=0.0.0.0
    ```
+
+   Pin `PORT=8000` on **api** so healthchecks and the start command (`API_PORT=$PORT`) agree. MCP cannot read `${{api.PORT}}` (that variable is not shared across services); use the same literal port in `OPENHEDGE_API_URL`. Do not set `API_PORT` or `MCP_PORT` as Railway variables. Locally those names split API (`8000`) and MCP (`8001`) on one machine.
 
    `OPENROUTER_API_KEY` belongs on **api** and **sync** only. Mark it as a required template variable.
 3. Confirm Qdrant persists across redeploys; `api` `/health` and `/ready`; `mcp` `/health` and `/mcp`; `sync` logs a successful `sync_markets` pass.

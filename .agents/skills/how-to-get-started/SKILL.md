@@ -8,11 +8,11 @@ description: >-
 
 # How to get started
 
-Get the user running quickly. Prefer Docker Compose for local use; if they want a hosted stack, point them at the Railway template in [README.md](../../../README.md). Use uv for local dev and tests. Never use pip, pip-tools, or poetry. Never commit `.env`.
+Get the user running quickly. Prefer Docker Compose for local use; if they want a hosted stack, follow [how-to-deploy-to-railway-using-railway-cli](../how-to-deploy-to-railway-using-railway-cli/SKILL.md) (or the README Deploy button once the template is published). Use uv for local dev and tests. Never use pip, pip-tools, or poetry. Never commit `.env`.
 
 ## Hosted (Railway)
 
-If the user wants to deploy rather than run locally, use the **Deploy on Railway** button in [README.md](../../../README.md). They need an OpenRouter API key. After deploy, MCP is at `https://<mcp-domain>/mcp`. Railway sync is hourly cron, so the first ingest may wait until the next hour unless they manually deploy `sync`. Do not invent a template URL; if `<TEMPLATE_CODE>` is still a placeholder, use Docker Compose instead.
+If the user wants to deploy with the Railway CLI, follow [how-to-deploy-to-railway-using-railway-cli](../how-to-deploy-to-railway-using-railway-cli/SKILL.md). For a one-click template (after it is published), use the **Deploy on Railway** button in [README.md](../../../README.md). They need an OpenRouter API key. After deploy, MCP is at `https://<mcp-domain>/mcp`. Railway sync is hourly cron, so the first ingest may wait until the next hour unless they redeploy `sync`. Do not invent a template URL; if `<TEMPLATE_CODE>` is still a placeholder, use the CLI skill or Docker Compose.
 
 ## Workflow
 
