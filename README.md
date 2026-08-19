@@ -26,9 +26,9 @@ This repo ships Cursor agent skills. If you are using Cursor (or another agent t
 
 One-click hosted stack (Qdrant, market sync, REST API, private MCP, public Caddy). You will be asked for an [OpenRouter](https://openrouter.ai/) API key (`OPENROUTER_API_KEY`).
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/<TEMPLATE_CODE>?utm_medium=integration&utm_source=button&utm_campaign=openhedge)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/openhedge?utm_medium=integration&utm_source=button&utm_campaign=openhedge)
 
-Replace `<TEMPLATE_CODE>` after the template is published (see below). Until then, self-host with [`.agents/skills/how-to-deploy-to-railway/SKILL.md`](.agents/skills/how-to-deploy-to-railway/SKILL.md) or run Docker Compose locally.
+To self-host without the button, follow [`.agents/skills/how-to-deploy-to-railway/SKILL.md`](.agents/skills/how-to-deploy-to-railway/SKILL.md) or run Docker Compose locally.
 
 The template creates five services:
 
@@ -62,7 +62,7 @@ For a custom hostname with Cloudflare WAF / rate limits, follow [`.agents/skills
 
 ### Publish the template (maintainers)
 
-Follow [`.agents/skills/how-to-publish-railway-template/SKILL.md`](.agents/skills/how-to-publish-railway-template/SKILL.md) after the GitHub-sourced stack is up ([`.agents/skills/how-to-deploy-to-railway/SKILL.md`](.agents/skills/how-to-deploy-to-railway/SKILL.md)), without `cloudflared`. Qdrant is the Docker image `qdrant/qdrant:v1.19.0` with no API key (private only). After publish, replace `<TEMPLATE_CODE>` in the Deploy button URL above.
+Follow [`.agents/skills/how-to-publish-railway-template/SKILL.md`](.agents/skills/how-to-publish-railway-template/SKILL.md) after the GitHub-sourced stack is up ([`.agents/skills/how-to-deploy-to-railway/SKILL.md`](.agents/skills/how-to-deploy-to-railway/SKILL.md)), without `cloudflared`. Qdrant is the Docker image `qdrant/qdrant:v1.19.0` with no API key (private only). After publish, put the template code in the Deploy button URL above (currently `openhedge`).
 
 ## Getting started
 
