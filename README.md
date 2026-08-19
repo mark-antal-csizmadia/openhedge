@@ -51,7 +51,7 @@ Point an MCP client at `https://<caddy-domain>/mcp` (the Railway-generated domai
 }
 ```
 
-Railway runs `python -m openhedge_core.sync_markets` on an hourly cron (`0 * * * *`); the replica is down between runs. The first tick may wait until the next hour — trigger a manual deploy of `sync` if you want ingest immediately. `/v1/search` and MCP search stay empty until that pass finishes. Check `sync` logs; `GET /ready` on `api` (private) reports Qdrant and whether the embedder is configured.
+Railway runs `python -m openhedge_core.sync_markets` on an hourly cron (`0 * * * *`); the replica is down between runs. The first tick may wait until the next hour — the CLI skill runs one Railway Run now after creating `sync` (`deploymentInstanceExecutionCreate`; not `railway service redeploy`). `/v1/search` and MCP search stay empty until that pass finishes. Check `sync` logs for `open batch created=`; `GET /ready` on `api` (private) reports Qdrant and whether the embedder is configured.
 
 Config-as-code for the GitHub-sourced services lives in [`deploy/railway/`](deploy/railway/). Caddy’s image is [`deploy/caddy/`](deploy/caddy/). There is no root `railway.toml` (that file would apply to every service).
 
