@@ -18,12 +18,12 @@ Local Compose is [how-to-get-started](../how-to-get-started/SKILL.md). To publis
 ```
 - [ ] railway login; GitHub connected; project linked
 - [ ] Qdrant image + volume (private, no API key)
-- [ ] api, then sync, then mcp, then caddy (config file → vars → GitHub)
-- [ ] public domain only on caddy; smoke /health
+- [ ] api, then sync, then mcp, then caddy (config file → vars → GitHub; wait SUCCESS before the next)
+- [ ] public domain only on caddy; smoke /health and /ready
 - [ ] sync Run now; logs show open batch created=
 ```
 
-**Order:** `Qdrant` → `api` and `sync` → `mcp` → `caddy`. Create app services **one at a time** (a tight `railway add` loop can return an empty body).
+**Order:** `Qdrant` → `api` and `sync` → `mcp` → `caddy`. Create app services **one at a time** (a tight `railway add` loop can return an empty body). Wait until the upstream deploy is SUCCESS/RUNNING (and `RAILWAY_PRIVATE_DOMAIN` is set) before the next service’s first boot that interpolates that hostname. Creating the service is not enough.
 
 Name the vector service **`Qdrant`**. Pin `PORT=8000` on `api`, `PORT=8001` on `mcp`, `PORT=8080` on `caddy`. Cross-service URLs cannot read `${{api.PORT}}`; put those literal ports in `OPENHEDGE_API_URL` and `UPSTREAM_URL`. `UPSTREAM_URL` is **host:port only** (no `http://`). Do **not** set `API_PORT`, `MCP_PORT`, `API_HOST`, `MCP_HOST`, `QDRANT_API_KEY`, `QDRANT__SERVICE__API_KEY`, `QDRANT__SERVICE__HTTP_PORT`, or `QDRANT__STORAGE__STORAGE_PATH`. zsh: keep `${{...}}` in single quotes.
 
@@ -91,7 +91,7 @@ railway variable set \
 railway service source connect --repo "$REPO" --branch main --service api
 ```
 
-Do not set `QDRANT_API_KEY`. If healthcheck says “service unavailable”, `PORT` is not `8000` or `railwayConfigFile` is not `/deploy/railway/api.toml`.
+Do not set `QDRANT_API_KEY`. If healthcheck says “service unavailable”, `PORT` is not `8000` or `railwayConfigFile` is not `/deploy/railway/api.toml`. Wait until `api` is SUCCESS before mcp.
 
 ## 3. sync
 
@@ -141,7 +141,7 @@ PY
 railway logs --service sync --latest --lines 80
 ```
 
-Ingest has started when logs show `open batch created=` (or later `updated=`). `setup_qdrant` then `Stopping Container` is only the pre-deploy hook. You may continue with mcp / caddy once ingest lines appear.
+Ingest has started when logs show `open batch created=` (or later `updated=`). `setup_qdrant` then `Stopping Container` is only the pre-deploy hook. You may continue with mcp once ingest lines appear. Do not add caddy until mcp is SUCCESS/RUNNING.
 
 ## 4. mcp
 
@@ -163,11 +163,11 @@ railway domain list --service mcp
 # railway domain delete --service mcp <the-domain>
 ```
 
-Literal `:8000` in `OPENHEDGE_API_URL` (same as pinned `api` `PORT`).
+Literal `:8000` in `OPENHEDGE_API_URL` (same as pinned `api` `PORT`). Wait until `mcp` is SUCCESS/RUNNING before adding caddy.
 
 ## 5. caddy
 
-Public edge. [`deploy/caddy/Caddyfile`](../../../deploy/caddy/Caddyfile) answers `/health` locally and proxies everything else to private MCP (`flush_interval -1`).
+Public edge. Do not add caddy while mcp is still BUILDING. [`deploy/caddy/Caddyfile`](../../../deploy/caddy/Caddyfile) answers `/health` locally and proxies everything else to private MCP (`flush_interval -1`).
 
 ```bash
 railway add --service caddy --json
@@ -182,7 +182,7 @@ railway service source connect --repo "$REPO" --branch main --service caddy
 railway domain --service caddy
 ```
 
-Literal `:8001` in `UPSTREAM_URL` (same as pinned `mcp` `PORT`). Do **not** prefix `http://` — Caddy `{http.*}` placeholders swallow the host and the replica dials `:8001` on itself; Railway then fails `/health` with “service unavailable”.
+Literal `:8001` in `UPSTREAM_URL` (same as pinned `mcp` `PORT`). Do **not** prefix `http://` — Caddy `{http.*}` placeholders swallow the host and the replica dials `:8001` on itself; Railway then fails `/health` with “service unavailable”. The same `dial tcp :8001` happens if `${{mcp.RAILWAY_PRIVATE_DOMAIN}}` is empty at caddy’s first boot (mcp still BUILDING). `/health` still succeeds (local). `railway variable list` may later show `mcp.railway.internal:8001`; Caddy does not re-read vars until redeploy. Fix: confirm the var, then `railway redeploy --service caddy -y`. Do not `railway up`.
 
 If the next step is Cloudflare Tunnel, skip `railway domain --service caddy` (or delete that hostname in [how-to-add-cloudflare-tunnel](../how-to-add-cloudflare-tunnel/SKILL.md)). A `*.up.railway.app` hostname bypasses WAF and rate limits.
 
@@ -205,7 +205,7 @@ curl -sS "https://<caddy-domain>/health"   # Caddy local; Railway healthcheck
 curl -sS "https://<caddy-domain>/ready"    # MCP via Caddy
 ```
 
-Confirm `sync` logs a successful `sync_markets` pass. `api` and `mcp` `/health` are private. If Caddy healthcheck says “service unavailable”, `UPSTREAM_URL` still has `http://` or Caddy is proxying `/health` to MCP.
+Confirm `sync` logs a successful `sync_markets` pass. `api` and `mcp` `/health` are private. If Caddy healthcheck says “service unavailable”, `UPSTREAM_URL` still has `http://` or Caddy is proxying `/health` to MCP. If `/health` is ok but `/ready` 502s with `dial tcp :8001`, mcp’s private domain was empty when caddy started — redeploy caddy after mcp is RUNNING.
 
 ## Pitfalls
 
@@ -215,9 +215,10 @@ Confirm `sync` logs a successful `sync_markets` pass. `api` and `mcp` `/health` 
 - `railwayConfigFile` before `source connect`. There is no root `railway.toml`.
 - `railway volume add` after `railway service Qdrant`. Not `--service` on `add`.
 - Create `api` / `sync` / `mcp` / `caddy` one at a time. If caddy add fails with an empty body, retry or use `serviceCreate`.
+- Do not `source connect` caddy while mcp is BUILDING. Empty `${{mcp.RAILWAY_PRIVATE_DOMAIN}}` bakes `UPSTREAM_URL=:8001` into Caddy (`dial tcp :8001` on itself). Listing vars is not a running-config refresh; `railway redeploy --service caddy -y` after mcp is RUNNING.
 - Do not set `API_PORT` / `MCP_PORT` / `API_HOST` / `MCP_HOST`.
 - Do not use `${{api.PORT}}` or `${{mcp.PORT}}` in other services’ vars.
-- Do not put `http://` in `UPSTREAM_URL`. Use `${{mcp.RAILWAY_PRIVATE_DOMAIN}}:8001`. Caddy `{http.*}` placeholders drop the host (`dial tcp :8001`).
+- Do not put `http://` in `UPSTREAM_URL`. Use `${{mcp.RAILWAY_PRIVATE_DOMAIN}}:8001`. Caddy `{http.*}` placeholders drop the host (`dial tcp :8001`). The same symptom if the hostname interpolates empty at first boot.
 - Caddy `/health` is local JSON. Do not reverse-proxy it to MCP or Caddy deploys wait on MCP.
 - Do not attach a Railway public domain to `mcp` or `Qdrant`.
 - Reference `Qdrant` (canvas name), not `qdrant`.
