@@ -1,6 +1,6 @@
 from typing import Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from openhedge_core.embeddings import DEFAULT_EMBEDDING_MODEL, EMBEDDING_DIM
@@ -49,7 +49,7 @@ class ServerSettings(_ServiceSettings):
 class McpServerSettings(_ServiceSettings):
     api_url: str = Field(default="http://127.0.0.1:8000", validation_alias="OPENHEDGE_API_URL")
     host: str = Field(default="127.0.0.1", validation_alias="MCP_HOST")
-    port: int = Field(default=8001, validation_alias="MCP_PORT")
+    port: int = Field(default=8001, validation_alias=AliasChoices("MCP_PORT", "PORT"))
 
 
 class SyncMarketsSettings(_ServiceSettings):

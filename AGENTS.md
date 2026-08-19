@@ -18,6 +18,7 @@ To connect MCP and try example hedges, follow [`.agents/skills/try-hedging-examp
 ## Layout
 
 - [`openhedge-core/`](openhedge-core/) — uv project (`pyproject.toml`, `uv.lock`, `src/`)
+- [`deploy/railway/`](deploy/railway/) — per-service Railway config-as-code for the hosted template (not a root `railway.toml`)
 - [`.pre-commit-config.yaml`](.pre-commit-config.yaml) — root hooks for ruff format/check and mypy on `openhedge-core/`
 
 ## Package Management with `uv`

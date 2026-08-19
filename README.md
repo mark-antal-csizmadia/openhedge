@@ -19,6 +19,69 @@ This repo ships Cursor agent skills. If you are using Cursor (or another agent t
 
 [`AGENTS.md`](AGENTS.md) already tells agents to follow those skills.
 
+## Deploy on Railway
+
+One-click hosted stack (Qdrant, market sync, REST API, public MCP). You will be asked for an [OpenRouter](https://openrouter.ai/) API key (`OPENROUTER_API_KEY`).
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/<TEMPLATE_CODE>?utm_medium=integration&utm_source=button&utm_campaign=openhedge)
+
+Replace `<TEMPLATE_CODE>` after the template is published (see below). Until then, use Docker Compose locally.
+
+The template creates four services:
+
+| Service | Role | Public? |
+| --- | --- | --- |
+| `qdrant` | Vector store (`qdrant/qdrant:v1.19.0`, volume at `/qdrant/storage`) | No |
+| `api` | REST API on port 8000 | No |
+| `sync` | Kalshi ingest + embeddings (Railway cron, hourly) | No |
+| `mcp` | Streamable HTTP MCP | **Yes** |
+
+Point an MCP client at `https://<mcp-domain>/mcp` (the Railway-generated domain on the `mcp` service). Example Cursor config:
+
+```json
+{
+  "mcpServers": {
+    "openhedge": {
+      "url": "https://<mcp-domain>/mcp"
+    }
+  }
+}
+```
+
+Railway runs `python -m openhedge_core.sync_markets` on an hourly cron (`0 * * * *`); the replica is down between runs. The first tick may wait until the next hour — trigger a manual deploy of `sync` if you want ingest immediately. `/v1/search` and MCP search stay empty until that pass finishes. Check `sync` logs; `GET /ready` on `api` (private) reports Qdrant and whether the embedder is configured.
+
+Config-as-code for the GitHub-sourced services lives in [`deploy/railway/`](deploy/railway/). There is no root `railway.toml` (that file would apply to every service).
+
+### Publish the template (maintainers)
+
+These steps run in the Railway dashboard after this repo is on `main`:
+
+1. Create a scratch project. Add `qdrant` from image `qdrant/qdrant:v1.19.0` with a volume on `/qdrant/storage` (no public domain). Add `api`, `sync`, and `mcp` from this GitHub repo; set each service’s config file to `/deploy/railway/api.toml`, `/deploy/railway/sync.toml`, and `/deploy/railway/mcp.toml`. Enable public HTTP only on `mcp`.
+2. Set reference variables (service names must match the canvas):
+
+   ```text
+   # qdrant
+   QDRANT__SERVICE__API_KEY=${{secret()}}
+   QDRANT__SERVICE__HTTP_PORT=6333
+   QDRANT__STORAGE__STORAGE_PATH=/qdrant/storage
+
+   # api + sync
+   QDRANT_URL=http://${{qdrant.RAILWAY_PRIVATE_DOMAIN}}:6333
+   QDRANT_API_KEY=${{qdrant.QDRANT__SERVICE__API_KEY}}
+   OPENROUTER_API_KEY=<required>
+   API_HOST=0.0.0.0
+   API_PORT=8000
+
+   # mcp
+   OPENHEDGE_API_URL=http://${{api.RAILWAY_PRIVATE_DOMAIN}}:8000
+   MCP_HOST=0.0.0.0
+   ```
+
+   `OPENROUTER_API_KEY` belongs on **api** and **sync** only. Mark it as a required template variable.
+3. Confirm Qdrant persists across redeploys; `api` `/health` and `/ready`; `mcp` `/health` and `/mcp`; `sync` logs a successful `sync_markets` pass.
+4. Project settings → **Generate Template from Project**. Publish to the marketplace.
+5. Replace `<TEMPLATE_CODE>` in the Deploy button URL above.
+
 ## Getting started
 
 Requires [uv](https://docs.astral.sh/uv/), [Docker](https://docs.docker.com/), Python 3.12+, and an [OpenRouter](https://openrouter.ai/) API key (`OPENROUTER_API_KEY`) for market sync and search.
@@ -133,7 +196,7 @@ A background sync pulls **active binary** Kalshi markets from the public REST AP
 
 For each new ticker, openhedge embeds a short text (event title plus Yes/No outcome labels) with OpenRouter `openai/text-embedding-3-small` (768 dimensions, cosine) and upserts the vector plus the full market payload into **Qdrant**. Later syncs refresh prices and other payload fields but do **not** re-embed. Closed, determined, or finalized markets are deleted from the collection.
 
-Docker Compose re-runs sync every hour (`SYNC_INTERVAL_SECONDS=3600`). `OPENROUTER_API_KEY` is required.
+Docker Compose re-runs sync every hour via [`openhedge-core/scripts/sync-loop.sh`](openhedge-core/scripts/sync-loop.sh) (`SYNC_INTERVAL_SECONDS=3600`). On Railway the same one-shot module is a cron job instead of a sleeping loop. `OPENROUTER_API_KEY` is required.
 
 ### Search
 
