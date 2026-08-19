@@ -45,7 +45,7 @@ railway variable list --service caddy
 railway variable list --service mcp
 ```
 
-Expect `PORT=8080` and `UPSTREAM_URL=http://${{mcp.RAILWAY_PRIVATE_DOMAIN}}:8001` on **caddy**, `PORT=8001` on **mcp**. Fix with the CLI skill’s Caddy/MCP steps if those are wrong.
+Expect `PORT=8080` and `UPSTREAM_URL=${{mcp.RAILWAY_PRIVATE_DOMAIN}}:8001` (host:port, no `http://`) on **caddy**, `PORT=8001` on **mcp**. Fix with the CLI skill’s Caddy/MCP steps if those are wrong. Caddy `/health` is local; `/mcp` and `/ready` proxy to MCP.
 
 ## 2. Detach Railway public domains
 

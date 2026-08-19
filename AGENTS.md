@@ -14,6 +14,7 @@ Components:
 
 For install and how to run the stack, follow [`.agents/skills/how-to-get-started/SKILL.md`](.agents/skills/how-to-get-started/SKILL.md).
 To deploy with the Railway CLI, follow [`.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md`](.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md).
+To create or publish the Railway marketplace template, follow [`.agents/skills/how-to-create-a-railway-template/SKILL.md`](.agents/skills/how-to-create-a-railway-template/SKILL.md).
 For a Cloudflare Tunnel showcase hostname, follow [`.agents/skills/how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md).
 To connect MCP and try example hedges, follow [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/skills/try-hedging-examples/SKILL.md).
 
