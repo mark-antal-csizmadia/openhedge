@@ -86,8 +86,14 @@ def main() -> None:
                     errors.append(f"{name}.OPENROUTER_API_KEY must be empty (no default)")
                 if optional is True:
                     errors.append(f"{name}.OPENROUTER_API_KEY must be required")
+                desc = (spec.get("description") or "").strip()
+                if not desc:
+                    errors.append(f"{name}.OPENROUTER_API_KEY needs a description (marketplace required vars)")
             elif key in DROP_QDRANT:
                 pass
+            elif key in ("QDRANT_URL", "OPENHEDGE_API_URL", "UPSTREAM_URL"):
+                if optional is not True:
+                    errors.append(f"{name}.{key} should be optional (keep default); else add a description")
             elif not filled and optional is not True:
                 required_empty.append(f"{name}.{key}")
 
