@@ -3,15 +3,15 @@ name: how-to-deploy-to-railway-using-railway-cli
 description: >-
   Deploys openhedge to Railway with the Railway CLI (Qdrant template, api,
   sync cron, private MCP, public Caddy). Use when the user asks to deploy to
-  Railway, run railway up, publish a Railway template, or set Railway service
-  variables.
+  Railway, run railway up, or set Railway service variables — not to publish
+  a marketplace template.
 ---
 
 # How to deploy to Railway using Railway CLI
 
 Stand up the hosted stack from the **repo root**. Do not invent `OPENROUTER_API_KEY`. Do not commit a root `railway.toml` (copy per service, then delete). Never use `pip`. Ask the user for the OpenRouter key if it is missing.
 
-Local Compose is a different path — [how-to-get-started](../how-to-get-started/SKILL.md). For a custom domain, Cloudflare Tunnel, and edge rate limits, follow [how-to-deploy-to-railway-with-cloudflare-tunnel](../how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md) after this stack is up.
+Local Compose is a different path — [how-to-get-started](../how-to-get-started/SKILL.md). For a custom domain, Cloudflare Tunnel, and edge rate limits, follow [how-to-deploy-to-railway-with-cloudflare-tunnel](../how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md) after this stack is up. To generate a marketplace template, follow [how-to-create-a-railway-template](../how-to-create-a-railway-template/SKILL.md) (`railway up` sources cannot be templated).
 
 ## Workflow
 
@@ -29,7 +29,7 @@ Local Compose is a different path — [how-to-get-started](../how-to-get-started
 
 The Qdrant marketplace template names the service **`Qdrant`**. Reference variables must use that name. App code only reads `API_PORT` / `MCP_PORT`; [`deploy/railway/api.toml`](../../../deploy/railway/api.toml) and [`mcp.toml`](../../../deploy/railway/mcp.toml) copy Railway `$PORT` onto those env vars in the start command. Do **not** set `API_PORT`, `MCP_PORT`, `API_HOST`, or `MCP_HOST` as Railway variables.
 
-`${{api.PORT}}` and `${{mcp.PORT}}` are **not** shared across services. Pin `PORT=8000` on `api`, `PORT=8001` on `mcp`, `PORT=8080` on `caddy`, and put those literal ports in `OPENHEDGE_API_URL` and `UPSTREAM_URL`.
+`${{api.PORT}}` and `${{mcp.PORT}}` are **not** shared across services. Pin `PORT=8000` on `api`, `PORT=8001` on `mcp`, `PORT=8080` on `caddy`, and put those literal ports in `OPENHEDGE_API_URL` and `UPSTREAM_URL`. `UPSTREAM_URL` is **host:port only** (no `http://`).
 
 Config-as-code lives in [`deploy/railway/`](../../../deploy/railway/). `railway up` reads **root** `railway.toml`, so copy the matching file before each `up`.
 
@@ -119,7 +119,7 @@ instance_id = inst["data"]["serviceInstance"]["id"]
 out = json.loads(sh(
     "railway", "api",
     "--variables", json.dumps({"input": {"serviceInstanceId": instance_id}}),
-    "mutation($input: DeploymentInstanceExecutionCreateInput!) { deploymentInstanceExecutionCreate(input: $input) { id status } }",
+    "mutation($input: DeploymentInstanceExecutionCreateInput!) { deploymentInstanceExecutionCreate(input: $input) }",
 ))
 print(json.dumps(out, indent=2))
 if out.get("errors") or not (out.get("data") or {}).get("deploymentInstanceExecutionCreate"):
@@ -156,13 +156,13 @@ Use **literal** `:8000` in `OPENHEDGE_API_URL` (same as pinned `api` `PORT`). zs
 
 ## 5. caddy
 
-Public edge. Proxies to private MCP (`flush_interval -1` for streamable HTTP).
+Public edge. [`deploy/caddy/Caddyfile`](../../../deploy/caddy/Caddyfile) answers `/health` locally and proxies everything else to private MCP (`flush_interval -1` for streamable HTTP).
 
 ```bash
 railway add --service caddy
 
 railway variable set \
-  'UPSTREAM_URL=http://${{mcp.RAILWAY_PRIVATE_DOMAIN}}:8001' \
+  'UPSTREAM_URL=${{mcp.RAILWAY_PRIVATE_DOMAIN}}:8001' \
   PORT=8080 \
   --service caddy --skip-deploys
 
@@ -172,6 +172,8 @@ rm railway.toml
 
 railway domain --service caddy
 ```
+
+Literal `:8001` in `UPSTREAM_URL` (same as pinned `mcp` `PORT`). Do **not** prefix `http://` — Caddy `{http.*}` placeholders swallow the host and the replica dials `:8001` on itself; Railway then fails `/health` with “service unavailable”.
 
 Point the client at `https://<caddy-domain>/mcp`.
 
@@ -188,23 +190,23 @@ Point the client at `https://<caddy-domain>/mcp`.
 ## Verify
 
 ```bash
-curl -sS "https://<caddy-domain>/health"
-curl -sS "https://<caddy-domain>/ready"
+curl -sS "https://<caddy-domain>/health"   # Caddy local; Railway healthcheck
+curl -sS "https://<caddy-domain>/ready"    # MCP via Caddy
 ```
 
-Confirm `sync` logs a successful `sync_markets` pass. `api` and `mcp` `/health` and `/ready` are private (no public domain).
+Confirm `sync` logs a successful `sync_markets` pass. `api` and `mcp` `/health` and `/ready` are private (no public domain). If Caddy healthcheck says “service unavailable”, `UPSTREAM_URL` still has `http://` or Caddy is proxying `/health` to MCP.
 
-## Publish template (optional, after a working project)
+## Publish template
 
-1. Project settings → **Generate Template from Project**.
-2. Mark `OPENROUTER_API_KEY` required (api + sync). Only **caddy** public. Do not include `cloudflared` or `TUNNEL_TOKEN`.
-3. Publish; put the template code in the README Deploy button (`<TEMPLATE_CODE>`).
+Do not generate a template from this `railway up` project. Follow [how-to-create-a-railway-template](../how-to-create-a-railway-template/SKILL.md).
 
 ## Pitfalls
 
 - Copy `deploy/railway/<service>.toml` → `railway.toml` **immediately before** that service’s `railway up`; `rm` it after. Never leave or commit root `railway.toml`.
 - Do not set `API_PORT` / `MCP_PORT` / `API_HOST` / `MCP_HOST` on Railway.
 - Do not use `${{api.PORT}}` or `${{mcp.PORT}}` in other services’ vars.
+- Do not put `http://` in `UPSTREAM_URL`. Use `${{mcp.RAILWAY_PRIVATE_DOMAIN}}:8001`. Caddy `{http.*}` placeholders drop the host (`dial tcp :8001`).
+- Caddy `/health` is local JSON. Do not reverse-proxy it to MCP or Caddy deploys wait on MCP.
 - Do not attach a Railway public domain to `mcp`.
 - Reference `Qdrant` (template name), not `qdrant`.
 - `OPENROUTER_API_KEY` on api and sync only. MCP talks only to the API. Caddy talks only to MCP.
