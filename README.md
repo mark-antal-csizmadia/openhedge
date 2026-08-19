@@ -15,35 +15,37 @@ Blanket is independently published and powered by Kalshi. It does not hold money
 This repo ships Cursor agent skills. If you are using Cursor (or another agent that can follow a skill file), point it at these rather than improvising setup:
 
 - [`.agents/skills/how-to-get-started/SKILL.md`](.agents/skills/how-to-get-started/SKILL.md) — install, `.env`, Docker Compose, health checks
-- [`.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md`](.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md) — Railway CLI: Qdrant template, api, sync cron, public MCP
+- [`.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md`](.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md) — Railway CLI: Qdrant template, api, sync cron, private MCP, public Caddy
+- [`.agents/skills/how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md) — showcase/prod: Cloudflare Tunnel in front of Caddy (no Railway public domain)
 - [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/skills/try-hedging-examples/SKILL.md) — connect MCP and run Blanket-style example prompts
 
 [`AGENTS.md`](AGENTS.md) already tells agents to follow those skills.
 
 ## Deploy on Railway
 
-One-click hosted stack (Qdrant, market sync, REST API, public MCP). You will be asked for an [OpenRouter](https://openrouter.ai/) API key (`OPENROUTER_API_KEY`).
+One-click hosted stack (Qdrant, market sync, REST API, private MCP, public Caddy). You will be asked for an [OpenRouter](https://openrouter.ai/) API key (`OPENROUTER_API_KEY`).
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/<TEMPLATE_CODE>?utm_medium=integration&utm_source=button&utm_campaign=openhedge)
 
 Replace `<TEMPLATE_CODE>` after the template is published (see below). Until then, deploy with the Railway CLI ([`.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md`](.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md)) or run Docker Compose locally.
 
-The template creates four services:
+The template creates five services:
 
 | Service | Role | Public? |
 | --- | --- | --- |
 | `qdrant` | Vector store (`qdrant/qdrant:v1.19.0`, volume at `/qdrant/storage`) | No |
 | `api` | REST API on port 8000 | No |
 | `sync` | Kalshi ingest + embeddings (Railway cron, hourly) | No |
-| `mcp` | Streamable HTTP MCP | **Yes** |
+| `mcp` | Streamable HTTP MCP on port 8001 | No |
+| `caddy` | Reverse proxy to `mcp` (streamable HTTP) | **Yes** |
 
-Point an MCP client at `https://<mcp-domain>/mcp` (the Railway-generated domain on the `mcp` service). Example Cursor config:
+Point an MCP client at `https://<caddy-domain>/mcp` (the Railway-generated domain on the `caddy` service). Example Cursor config:
 
 ```json
 {
   "mcpServers": {
     "openhedge": {
-      "url": "https://<mcp-domain>/mcp"
+      "url": "https://<caddy-domain>/mcp"
     }
   }
 }
@@ -51,13 +53,17 @@ Point an MCP client at `https://<mcp-domain>/mcp` (the Railway-generated domain 
 
 Railway runs `python -m openhedge_core.sync_markets` on an hourly cron (`0 * * * *`); the replica is down between runs. The first tick may wait until the next hour — trigger a manual deploy of `sync` if you want ingest immediately. `/v1/search` and MCP search stay empty until that pass finishes. Check `sync` logs; `GET /ready` on `api` (private) reports Qdrant and whether the embedder is configured.
 
-Config-as-code for the GitHub-sourced services lives in [`deploy/railway/`](deploy/railway/). There is no root `railway.toml` (that file would apply to every service).
+Config-as-code for the GitHub-sourced services lives in [`deploy/railway/`](deploy/railway/). Caddy’s image is [`deploy/caddy/`](deploy/caddy/). There is no root `railway.toml` (that file would apply to every service).
+
+### Showcase (Cloudflare Tunnel)
+
+For a custom hostname with Cloudflare WAF / rate limits, follow [`.agents/skills/how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md). That path uses the same Caddy service: delete the Railway public domain on `caddy` (and `mcp` if one exists), deploy `cloudflared`, and point `mcp.<your-domain>` at `caddy.railway.internal:8080`. Do not leave a Railway public hostname on Caddy — it bypasses Cloudflare. Do not put `cloudflared` or `TUNNEL_TOKEN` in the published template.
 
 ### Publish the template (maintainers)
 
 These steps run in the Railway dashboard after this repo is on `main`:
 
-1. Create a scratch project. Add `qdrant` from image `qdrant/qdrant:v1.19.0` with a volume on `/qdrant/storage` (no public domain). Add `api`, `sync`, and `mcp` from this GitHub repo; set each service’s config file to `/deploy/railway/api.toml`, `/deploy/railway/sync.toml`, and `/deploy/railway/mcp.toml`. Enable public HTTP only on `mcp`.
+1. Create a scratch project. Add `qdrant` from image `qdrant/qdrant:v1.19.0` with a volume on `/qdrant/storage` (no public domain). Add `api`, `sync`, `mcp`, and `caddy` from this GitHub repo; set each service’s config file to `/deploy/railway/api.toml`, `/deploy/railway/sync.toml`, `/deploy/railway/mcp.toml`, and `/deploy/railway/caddy.toml`. Enable public HTTP only on `caddy`.
 2. Set reference variables (service names must match the canvas):
 
    ```text
@@ -74,13 +80,18 @@ These steps run in the Railway dashboard after this repo is on `main`:
 
    # mcp
    OPENHEDGE_API_URL=http://${{api.RAILWAY_PRIVATE_DOMAIN}}:8000
+   PORT=8001
+
+   # caddy
+   UPSTREAM_URL=http://${{mcp.RAILWAY_PRIVATE_DOMAIN}}:8001
+   PORT=8080
    ```
 
-   Pin `PORT=8000` on **api** so healthchecks and the start command (`API_PORT=$PORT`) agree. MCP cannot read `${{api.PORT}}` (that variable is not shared across services); use the same literal port in `OPENHEDGE_API_URL`. Do not set `API_PORT` or `MCP_PORT` as Railway variables. Locally those names split API (`8000`) and MCP (`8001`) on one machine.
+   Pin `PORT` on each HTTP service so healthchecks and start commands agree (`API_PORT=$PORT` on api, `MCP_PORT=$PORT` on mcp, Caddyfile `:{$PORT:8080}`). Cross-service URLs cannot read `${{api.PORT}}` or `${{mcp.PORT}}`; use the same literal ports in `OPENHEDGE_API_URL` and `UPSTREAM_URL`. Do not set `API_PORT` or `MCP_PORT` as Railway variables. Locally those names split API (`8000`) and MCP (`8001`) on one machine.
 
    `OPENROUTER_API_KEY` belongs on **api** and **sync** only. Mark it as a required template variable.
-3. Confirm Qdrant persists across redeploys; `api` `/health` and `/ready`; `mcp` `/health` and `/mcp`; `sync` logs a successful `sync_markets` pass.
-4. Project settings → **Generate Template from Project**. Publish to the marketplace.
+3. Confirm Qdrant persists across redeploys; `caddy` `/health` and `/mcp`; `api` `/health` and `/ready` (private); `sync` logs a successful `sync_markets` pass.
+4. Project settings → **Generate Template from Project**. Public HTTP only on `caddy`. Do not include `cloudflared`. Publish to the marketplace.
 5. Replace `<TEMPLATE_CODE>` in the Deploy button URL above.
 
 ## Getting started

@@ -12,7 +12,7 @@ Get the user running quickly. Prefer Docker Compose for local use; if they want 
 
 ## Hosted (Railway)
 
-If the user wants to deploy with the Railway CLI, follow [how-to-deploy-to-railway-using-railway-cli](../how-to-deploy-to-railway-using-railway-cli/SKILL.md). For a one-click template (after it is published), use the **Deploy on Railway** button in [README.md](../../../README.md). They need an OpenRouter API key. After deploy, MCP is at `https://<mcp-domain>/mcp`. Railway sync is hourly cron, so the first ingest may wait until the next hour unless they redeploy `sync`. Do not invent a template URL; if `<TEMPLATE_CODE>` is still a placeholder, use the CLI skill or Docker Compose.
+If the user wants to deploy with the Railway CLI, follow [how-to-deploy-to-railway-using-railway-cli](../how-to-deploy-to-railway-using-railway-cli/SKILL.md). For a custom domain, Cloudflare Tunnel, and edge rate limits, follow [how-to-deploy-to-railway-with-cloudflare-tunnel](../how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md) after that stack is up. For a one-click template (after it is published), use the **Deploy on Railway** button in [README.md](../../../README.md). They need an OpenRouter API key. After the CLI/template deploy, MCP is at `https://<caddy-domain>/mcp`. Railway sync is hourly cron, so the first ingest may wait until the next hour unless they redeploy `sync`. Do not invent a template URL; if `<TEMPLATE_CODE>` is still a placeholder, use the CLI skill or Docker Compose.
 
 ## Workflow
 
