@@ -21,7 +21,7 @@ Templates can only copy **GitHub** or **Docker image** sources. Nested marketpla
 - [ ] GitHub-sourced stack already up (Qdrant image, api, sync, mcp, caddy)
 - [ ] No cloudflared / TUNNEL_TOKEN on this project
 - [ ] railway templates create --json
-- [ ] Prompt the user with the copy-paste kit (values, descriptions, icon); wait; verify
+- [ ] Prompt the user with the copy-paste kit (values, descriptions, icon, caddy `/health`); wait; verify
 - [ ] Agent runs railway templates publish with category, description, overview, and --image
 - [ ] Put published code in the README Deploy button
 ```
@@ -35,11 +35,12 @@ Templates can only copy **GitHub** or **Docker image** sources. Nested marketpla
 | Card description (25–75 chars) | `--description "Discover hedges in event contracts and prediction markets"` | — |
 | Overview (required headings) | `--readme-file -` with the heredoc below | — |
 | Icon | `--image` GitHub raw URL of `deploy/railway/template-icon.svg` | Also upload that SVG in the composer if `--image` is not on the default branch yet |
+| Caddy healthcheck path `/health` | — | paste from kit (Generate Template drops it) |
 | `PORT` defaults, optional, descriptions | — | paste from kit |
 | Mark `QDRANT_URL` / `OPENHEDGE_API_URL` / `UPSTREAM_URL` optional + descriptions | — | paste from kit (keep generated defaults) |
 | `OPENROUTER_API_KEY` required + description | — | paste from kit |
 
-`templates create` has no flags for any of the card or variable fields. `templates publish` / `update` sets category, description, readme, and optional `--image` only — **not** service variables.
+`templates create` has no flags for any of the card or variable fields. `templates publish` / `update` sets category, description, readme, and optional `--image` only — **not** service variables or the Caddy healthcheck path.
 
 ## Prerequisites
 
@@ -54,6 +55,7 @@ Templates can only copy **GitHub** or **Docker image** sources. Nested marketpla
 - `${{...}}` references survive as `defaultValue` (`QDRANT_URL`, `OPENHEDGE_API_URL`, `UPSTREAM_URL`).
 - Literals are blanked (`PORT=8000`, `OPENROUTER_API_KEY`). That is why `PORT` must be re-defaulted in the composer. `railway.toml` cannot declare service env vars.
 - Runtime `PORT` is not dashboard-referenceable. Do not use `${{api.PORT}}` in other services; URLs stay `:8000` / `:8001`.
+- Caddy already has `healthcheckPath = "/health"` in [`deploy/railway/caddy.toml`](../../../deploy/railway/caddy.toml) (Caddyfile answers it locally; it does not proxy `/health` to MCP). Generate Template copies sources, variables, and the public domain, but it often leaves the **template canvas** Healthcheck Path empty. The guidelines checker looks at that canvas field, not the live toml, so it warns: Service "caddy" has a public domain but no healthcheck path. Re-set `/health` on **caddy** in the composer. Do **not** `templates create` again to “fix” it.
 - Do **not** `templates create` again to “fix” PORT — that makes a new draft and re-strips literals.
 - `railway templates publish` / `update` only changes marketplace metadata (category, description, readme). It does **not** change service variables.
 
@@ -67,11 +69,11 @@ Use `id`, `code`, and `editorUrl` from the JSON. Work in that draft. Delete left
 
 ## Composer (required, user must click)
 
-Generate blanks `PORT`. The public CLI/GraphQL API **cannot** set template variable defaults, descriptions, or the icon. Do **not** try to patch `serializedConfig`. Do **not** `templates create` again.
+Generate blanks `PORT` and drops the Caddy healthcheck path from the canvas. The public CLI/GraphQL API **cannot** set template variable defaults, descriptions, the icon, or that healthcheck field. Do **not** try to patch `serializedConfig`. Do **not** `templates create` again.
 
-The dashboard **Publishing requirements** list is why a generated draft still says “Not published”. Generate copies services and `${{...}}` defaults, but it does **not** set marketplace card fields, variable descriptions, or an icon. `isOptional: false` vars without a description fail “A description on every required variable” even when they already have a default (`QDRANT_URL`, `OPENHEDGE_API_URL`, `UPSTREAM_URL`).
+The dashboard **Publishing requirements** list is why a generated draft still says “Not published”. Generate copies services and `${{...}}` defaults, but it does **not** set marketplace card fields, variable descriptions, or an icon. `isOptional: false` vars without a description fail “A description on every required variable” even when they already have a default (`QDRANT_URL`, `OPENHEDGE_API_URL`, `UPSTREAM_URL`). Template **guidelines** also warn when public **caddy** has no canvas healthcheck — that is a composer paste, not a CLI publish field.
 
-**Stop.** Send the copy-paste kit below with `editorUrl` filled in. Do not ask them to invent values, descriptions, or an icon. They edit this generated draft (canvas shows `Qdrant`, `api`, `sync`, `mcp`, `caddy`). A blank **New Template** fails “At least one service”. Save after edits.
+**Stop.** Send the copy-paste kit below with `editorUrl` filled in. Do not ask them to invent values, descriptions, an icon, or a healthcheck path. They edit this generated draft (canvas shows `Qdrant`, `api`, `sync`, `mcp`, `caddy`). A blank **New Template** fails “At least one service”. Save after edits.
 
 If Qdrant still has `QDRANT__SERVICE__HTTP_PORT` or `QDRANT__STORAGE__STORAGE_PATH`, **delete** those rows. Public HTTP only on **caddy**. No `cloudflared`, `TUNNEL_TOKEN`, or Qdrant API key.
 
@@ -89,7 +91,11 @@ Canvas must show five services: `Qdrant`, `api`, `sync`, `mcp`, `caddy`. Then:
 
 **1. Icon.** Upload [`deploy/railway/template-icon.svg`](../../../deploy/railway/template-icon.svg) (1:1 SVG, dark green card with a cream price path). In the composer, use the template icon control and pick that file. If the file picker wants a PNG, export that SVG at 512×512.
 
-**2. Variables.** For each row: paste **Value** if listed, check **Mark as optional** when the kit says yes, paste **Description** into the description field. Keep generated `${{...}}` defaults — do not rewrite them. Empty + optional omits the var on deploy, so optional rows must keep their value.
+**2. Caddy healthcheck.** The live stack already has this. [`deploy/railway/caddy.toml`](../../../deploy/railway/caddy.toml) sets `healthcheckPath = "/health"`, and the Caddyfile returns 200 on that path locally (it does not proxy `/health` to MCP). Generate Template copies sources, variables, and the public domain, but it often leaves the **template canvas** Healthcheck Path empty. The guidelines checker looks at that canvas field, not the live toml, so it warns: Service "caddy" has a public domain but no healthcheck path.
+
+Do not run Generate Template / `templates create` again to “fix” it (that makes a new draft and re-strips literals). In this draft: click the **caddy** service on the canvas (not api/mcp), set **Healthcheck Path** to `/health`, and set timeout to `300` if that field is there. Keep `PORT` default `8080` so the probe hits the right port. This is a **guideline**, not a publishing-requirements blocker (category / description / overview still come from `templates publish`).
+
+**3. Variables.** For each row: paste **Value** if listed, check **Mark as optional** when the kit says yes, paste **Description** into the description field. Keep generated `${{...}}` defaults — do not rewrite them. Empty + optional omits the var on deploy, so optional rows must keep their value.
 
 | Service | Variable | Value | Optional? |
 | --- | --- | --- | --- |
@@ -246,8 +252,8 @@ The README **Deploy on Railway** button is the one-click path. Do not invent a t
 - Do not set `QDRANT__SERVICE__HTTP_PORT` or `QDRANT__STORAGE__STORAGE_PATH` on the source project or the template.
 - Do not attach a Railway public domain to `mcp` or `Qdrant`.
 - Do not pass repo `README.md` to `templates publish`.
-- Do not `templates create` twice to fix variables; prompt the user to edit the draft composer, then verify.
+- Do not `templates create` twice to fix variables or the Caddy healthcheck path; prompt the user to edit the draft composer, then verify.
 - Do not call `templateUpdateV2` or otherwise try to set composer variables from the CLI. Send the copy-paste kit.
-- Do not ask the user to invent descriptions, PORT values, or an icon. Paste the kit; they copy and upload `deploy/railway/template-icon.svg`.
+- Do not ask the user to invent descriptions, PORT values, an icon, or a healthcheck path. Paste the kit; they copy and upload `deploy/railway/template-icon.svg`, and set caddy Healthcheck Path to `/health` (Generate Template drops the live toml value from the canvas).
 - Do not ask the user to type marketplace category, card description, or overview in the dashboard. Run `templates publish` yourself.
-- Dashboard “Publishing requirements”: **you** set category / description / overview / icon URL with `templates publish`. User pastes composer variables from the kit and uploads the SVG if `--image` 404s. Five services come from `templates create` on the generated draft.
+- Dashboard “Publishing requirements”: **you** set category / description / overview / icon URL with `templates publish`. User pastes composer variables from the kit, re-sets caddy `/health`, and uploads the SVG if `--image` 404s. Five services come from `templates create` on the generated draft.
