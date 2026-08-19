@@ -1,0 +1,10 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "openhedge-core/Dockerfile"
+
+[deploy]
+preDeployCommand = ["python -m openhedge_core.setup_qdrant"]
+startCommand = "python -m openhedge_core.sync_markets"
+cronSchedule = "0 * * * *"
+numReplicas = 1
+restartPolicyType = "NEVER"

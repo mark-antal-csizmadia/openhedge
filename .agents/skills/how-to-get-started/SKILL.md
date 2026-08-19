@@ -8,11 +8,15 @@ description: >-
 
 # How to get started
 
-Get the user running quickly. Prefer Docker Compose for the product; use uv for local dev and tests. Never use pip, pip-tools, or poetry. Never commit `.env`.
+Get the user running quickly. Prefer Docker Compose for local use; if they want a hosted stack, point them at the Railway template in [README.md](../../../README.md). Use uv for local dev and tests. Never use pip, pip-tools, or poetry. Never commit `.env`.
+
+## Hosted (Railway)
+
+If the user wants to deploy rather than run locally, use the **Deploy on Railway** button in [README.md](../../../README.md). They need an OpenRouter API key. After deploy, MCP is at `https://<mcp-domain>/mcp`. Railway sync is hourly cron, so the first ingest may wait until the next hour unless they manually deploy `sync`. Do not invent a template URL; if `<TEMPLATE_CODE>` is still a placeholder, use Docker Compose instead.
 
 ## Workflow
 
-Copy this checklist and tick items as you go:
+Copy this checklist and tick items as you go (skip Docker items if using Railway):
 
 ```
 - [ ] Prerequisites present (Python 3.12+, uv, Docker)
