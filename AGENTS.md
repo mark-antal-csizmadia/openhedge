@@ -13,9 +13,9 @@ Components:
 - `openhedge-core`: a Python library (`src/openhedge_core`), Python 3.12+
 
 For install and how to run the stack, follow [`.agents/skills/how-to-get-started/SKILL.md`](.agents/skills/how-to-get-started/SKILL.md).
-To deploy with the Railway CLI, follow [`.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md`](.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md).
-To create or publish the Railway marketplace template, follow [`.agents/skills/how-to-create-a-railway-template/SKILL.md`](.agents/skills/how-to-create-a-railway-template/SKILL.md).
-For a Cloudflare Tunnel showcase hostname, follow [`.agents/skills/how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md).
+To self-host on Railway (GitHub-sourced), follow [`.agents/skills/how-to-deploy-to-railway/SKILL.md`](.agents/skills/how-to-deploy-to-railway/SKILL.md).
+To publish the Railway marketplace template, follow [`.agents/skills/how-to-publish-railway-template/SKILL.md`](.agents/skills/how-to-publish-railway-template/SKILL.md).
+To add Cloudflare Tunnel on an existing stack, follow [`.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md).
 To connect MCP and try example hedges, follow [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/skills/try-hedging-examples/SKILL.md).
 
 ## Layout

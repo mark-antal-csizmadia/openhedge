@@ -8,11 +8,11 @@ description: >-
 
 # How to get started
 
-Get the user running quickly. Prefer Docker Compose for local use; if they want a hosted stack, follow [how-to-deploy-to-railway-using-railway-cli](../how-to-deploy-to-railway-using-railway-cli/SKILL.md) (or the README Deploy button once the template is published). Use uv for local dev and tests. Never use pip, pip-tools, or poetry. Never commit `.env`.
+Get the user running quickly. Prefer Docker Compose for local use; if they want a hosted stack, follow [how-to-deploy-to-railway](../how-to-deploy-to-railway/SKILL.md) (or the README Deploy button once the template is published). Use uv for local dev and tests. Never use pip, pip-tools, or poetry. Never commit `.env`.
 
 ## Hosted (Railway)
 
-If the user wants to deploy with the Railway CLI, follow [how-to-deploy-to-railway-using-railway-cli](../how-to-deploy-to-railway-using-railway-cli/SKILL.md). To publish the marketplace template, follow [how-to-create-a-railway-template](../how-to-create-a-railway-template/SKILL.md). For a custom domain, Cloudflare Tunnel, and edge rate limits, follow [how-to-deploy-to-railway-with-cloudflare-tunnel](../how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md) after that stack is up. For a one-click template (after it is published), use the **Deploy on Railway** button in [README.md](../../../README.md). They need an OpenRouter API key. After the CLI/template deploy, MCP is at `https://<caddy-domain>/mcp`. Railway sync is hourly cron; the CLI skill triggers one Run now after creating `sync`. Do not invent a template URL; if `<TEMPLATE_CODE>` is still a placeholder, use the CLI skill or Docker Compose.
+If the user wants to self-host on Railway, follow [how-to-deploy-to-railway](../how-to-deploy-to-railway/SKILL.md). To publish the marketplace template, follow [how-to-publish-railway-template](../how-to-publish-railway-template/SKILL.md) after that stack is up. For a custom domain, Cloudflare Tunnel, and edge rate limits, follow [how-to-add-cloudflare-tunnel](../how-to-add-cloudflare-tunnel/SKILL.md) after that stack is up. For a one-click template (after it is published), use the **Deploy on Railway** button in [README.md](../../../README.md). They need an OpenRouter API key. After the deploy/template, MCP is at `https://<caddy-domain>/mcp`. Railway sync is hourly cron; the deploy skill triggers one Run now after creating `sync`. Do not invent a template URL; if `<TEMPLATE_CODE>` is still a placeholder, use the deploy skill or Docker Compose.
 
 ## Workflow
 
