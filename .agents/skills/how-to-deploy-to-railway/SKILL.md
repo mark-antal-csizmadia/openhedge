@@ -25,11 +25,11 @@ Local Compose is [how-to-get-started](../how-to-get-started/SKILL.md). To publis
 
 **Order:** `Qdrant` → `api` and `sync` → `mcp` → `caddy`. Create app services **one at a time** (a tight `railway add` loop can return an empty body).
 
-Name the vector service **`Qdrant`**. Pin `PORT=8000` on `api`, `PORT=8001` on `mcp`, `PORT=8080` on `caddy`. Cross-service URLs cannot read `${{api.PORT}}`; put those literal ports in `OPENHEDGE_API_URL` and `UPSTREAM_URL`. `UPSTREAM_URL` is **host:port only** (no `http://`). Do **not** set `API_PORT`, `MCP_PORT`, `API_HOST`, `MCP_HOST`, `QDRANT_API_KEY`, or `QDRANT__SERVICE__API_KEY`. zsh: keep `${{...}}` in single quotes.
+Name the vector service **`Qdrant`**. Pin `PORT=8000` on `api`, `PORT=8001` on `mcp`, `PORT=8080` on `caddy`. Cross-service URLs cannot read `${{api.PORT}}`; put those literal ports in `OPENHEDGE_API_URL` and `UPSTREAM_URL`. `UPSTREAM_URL` is **host:port only** (no `http://`). Do **not** set `API_PORT`, `MCP_PORT`, `API_HOST`, `MCP_HOST`, `QDRANT_API_KEY`, `QDRANT__SERVICE__API_KEY`, `QDRANT__SERVICE__HTTP_PORT`, or `QDRANT__STORAGE__STORAGE_PATH`. zsh: keep `${{...}}` in single quotes.
 
 No root `railway.toml`. Per-service config is [`deploy/railway/`](../../../deploy/railway/). Set `railwayConfigFile` **before** `source connect`.
 
-Qdrant has **no API key** (same as local Compose). Keep it private. Empty `QDRANT_API_KEY` is ignored by the app; omit the var entirely.
+Qdrant has **no API key** (same as local Compose). Keep it private. Empty `QDRANT_API_KEY` is ignored by the app; omit the var entirely. Do **not** set `QDRANT__SERVICE__HTTP_PORT` or `QDRANT__STORAGE__STORAGE_PATH` — the image already uses HTTP 6333 and `/qdrant/storage`. Generate Template blanks those literals into empty required fields.
 
 ## Prerequisites
 
@@ -66,10 +66,7 @@ python3 .agents/skills/how-to-deploy-to-railway/scripts/create_empty_service.py 
 Image source (not `railway deploy --template i1tz3T`). No API key. No public domain.
 
 ```bash
-railway add --image qdrant/qdrant:v1.19.0 --service Qdrant \
-  --variables 'QDRANT__SERVICE__HTTP_PORT=6333' \
-  --variables 'QDRANT__STORAGE__STORAGE_PATH=/qdrant/storage' \
-  --json
+railway add --image qdrant/qdrant:v1.19.0 --service Qdrant --json
 
 railway service Qdrant
 railway volume add --mount-path /qdrant/storage --json
@@ -214,7 +211,7 @@ Confirm `sync` logs a successful `sync_markets` pass. `api` and `mcp` `/health` 
 
 - Do not `railway up`. Use GitHub `source connect`.
 - Do not use `railway deploy --template i1tz3T` or a Caddy marketplace template as a nested source.
-- Do not set `QDRANT_API_KEY` or `QDRANT__SERVICE__API_KEY`.
+- Do not set `QDRANT_API_KEY`, `QDRANT__SERVICE__API_KEY`, `QDRANT__SERVICE__HTTP_PORT`, or `QDRANT__STORAGE__STORAGE_PATH` (image defaults; generate would strip literals into required empty fields).
 - `railwayConfigFile` before `source connect`. There is no root `railway.toml`.
 - `railway volume add` after `railway service Qdrant`. Not `--service` on `add`.
 - Create `api` / `sync` / `mcp` / `caddy` one at a time. If caddy add fails with an empty body, retry or use `serviceCreate`.

@@ -8,11 +8,13 @@ description: >-
 
 # How to get started
 
-Get the user running quickly. Prefer Docker Compose for local use; if they want a hosted stack, follow [how-to-deploy-to-railway](../how-to-deploy-to-railway/SKILL.md) (or the README Deploy button once the template is published). Use uv for local dev and tests. Never use pip, pip-tools, or poetry. Never commit `.env`.
+Get the user running quickly. Prefer Docker Compose for local use; if they want a hosted stack, use the README **Deploy on Railway** button or follow [how-to-deploy-to-railway](../how-to-deploy-to-railway/SKILL.md). Use uv for local dev and tests. Never use pip, pip-tools, or poetry. Never commit `.env`.
 
 ## Hosted (Railway)
 
-If the user wants to self-host on Railway, follow [how-to-deploy-to-railway](../how-to-deploy-to-railway/SKILL.md). To publish the marketplace template, follow [how-to-publish-railway-template](../how-to-publish-railway-template/SKILL.md) after that stack is up. For a custom domain, Cloudflare Tunnel, and edge rate limits, follow [how-to-add-cloudflare-tunnel](../how-to-add-cloudflare-tunnel/SKILL.md) after that stack is up. For a one-click template (after it is published), use the **Deploy on Railway** button in [README.md](../../../README.md). They need an OpenRouter API key. After the deploy/template, MCP is at `https://<caddy-domain>/mcp`. Railway sync is hourly cron; the deploy skill triggers one Run now after creating `sync`. Do not invent a template URL; if `<TEMPLATE_CODE>` is still a placeholder, use the deploy skill or Docker Compose.
+If the user wants a hosted stack, prefer the **Deploy on Railway** button in [README.md](../../../README.md) (one-click marketplace template). They will be asked only for an [OpenRouter](https://openrouter.ai/) API key (`OPENROUTER_API_KEY`). After deploy, MCP is `https://<caddy-domain>/mcp`. Search stays empty until `sync` ingest (`open batch created=`). Cron is hourly (`0 * * * *`); the first tick waits until `:00` UTC. One-click deploys do **not** auto Run now — after the stack is up, tell the user to **Run now** on `sync` in Railway. Do not invent a template URL; use the README button.
+
+To self-host from this GitHub repo (source connect, not the button), follow [how-to-deploy-to-railway](../how-to-deploy-to-railway/SKILL.md). That path does trigger one Run now after creating `sync`. To publish or refresh the marketplace template, follow [how-to-publish-railway-template](../how-to-publish-railway-template/SKILL.md). For a custom domain, Cloudflare Tunnel, and edge rate limits, follow [how-to-add-cloudflare-tunnel](../how-to-add-cloudflare-tunnel/SKILL.md) after the stack is up.
 
 ## Workflow
 
