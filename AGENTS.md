@@ -14,11 +14,13 @@ Components:
 
 For install and how to run the stack, follow [`.agents/skills/how-to-get-started/SKILL.md`](.agents/skills/how-to-get-started/SKILL.md).
 To deploy with the Railway CLI, follow [`.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md`](.agents/skills/how-to-deploy-to-railway-using-railway-cli/SKILL.md).
+For a Cloudflare Tunnel showcase hostname, follow [`.agents/skills/how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-deploy-to-railway-with-cloudflare-tunnel/SKILL.md).
 To connect MCP and try example hedges, follow [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/skills/try-hedging-examples/SKILL.md).
 
 ## Layout
 
 - [`openhedge-core/`](openhedge-core/) — uv project (`pyproject.toml`, `uv.lock`, `src/`)
+- [`deploy/caddy/`](deploy/caddy/) — Caddy reverse proxy (Railway public edge; streamable HTTP)
 - [`deploy/railway/`](deploy/railway/) — per-service Railway config-as-code for the hosted template (not a root `railway.toml`)
 - [`.pre-commit-config.yaml`](.pre-commit-config.yaml) — root hooks for ruff format/check and mypy on `openhedge-core/`
 

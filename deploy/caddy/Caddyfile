@@ -1,0 +1,13 @@
+{
+	auto_https off
+}
+
+:{$PORT:8080} {
+	reverse_proxy {$UPSTREAM_URL} {
+		flush_interval -1
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+}
