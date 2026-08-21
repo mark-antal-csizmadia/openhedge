@@ -4,6 +4,10 @@ Open source experimental tool for discovering relevant hedges using event contra
 
 It does not hold money or place trades. Any order happens on the source venue (today, [Kalshi](https://kalshi.com)).
 
+## Hosted MCP
+
+Install the public MCP from [openhedge.app](https://openhedge.app). The endpoint is `https://mcp.openhedge.app/mcp` (unauthenticated, rate limited). To self-host instead, use the Deploy on Railway button below.
+
 ## Inspiration
 
 This project is inspired by [Blanket](https://tryblanket.app/) — a sharp, well-designed product that maps a small-business risk in plain language to live Kalshi markets, sizes a partial offset, and says so when nothing fits. Blanket found that fuel, fertilizer, weather, financing, and game-day promotions are real exposures, and that a prediction-market contract is sometimes a useful (if imperfect) proxy.
@@ -19,6 +23,7 @@ This repo ships Cursor agent skills. If you are using Cursor (or another agent t
 - [`.agents/skills/how-to-publish-railway-template/SKILL.md`](.agents/skills/how-to-publish-railway-template/SKILL.md) — generate and publish the marketplace template from that stack
 - [`.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md) — add-on: Cloudflare Tunnel in front of Caddy (custom domain, WAF, rate limits)
 - [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/skills/try-hedging-examples/SKILL.md) — connect MCP and run Blanket-style example prompts
+- [`.agents/skills/how-to-deploy-landing/SKILL.md`](.agents/skills/how-to-deploy-landing/SKILL.md) — Next.js landing page on its own Railway project (`openhedge.app`)
 
 [`AGENTS.md`](AGENTS.md) already tells agents to follow those skills.
 
@@ -132,31 +137,29 @@ Once MCP is up, follow [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/
 
 Example prompts (adapted from [Blanket’s casebook](https://tryblanket.app/#examples)):
 
-**Atlas Trucking** (Denver, fuel)
+**Sweden AI App Building Platform** (Sweden, AI compute)
 
-> I run a four-truck fleet in Denver. Diesel above $5 could cost us about $50,000 this year.
+> I run an AI app building platform in Stockholm, Sweden. NVIDIA H100 GPU hourly price above $2.75 could increase our inference cost by $1,000 next month.
 
-**Wrigleyville Tap** (Chicago, sports)
+Should find a good hedge as of 21/08/2026.
 
-> I run a bar in Wrigleyville. If the Cubs win, I want to fund a customer offer; the promo could cost us about $5,000.
+**Berlin Sports Bar** (Germany, sports)
 
-**Prairie Gold Farms** (Iowa, input)
+> I run a bar in Berlin, Germany. If the Union Berlin win a Bundesliga match, I want to fund a customer offer; the promo could cost us about $1,000.
 
-> I farm in central Iowa. A fertilizer jump toward $1,000 a ton would squeeze this season’s margins.
+Should find a good hedge as of 21/08/2026.
 
-**Taverna Bonfouca** (New Orleans, weather)
+**US Bowling Alley** (USA, electricity)
 
-> I run a restaurant in New Orleans. A major hurricane this season would wipe out our outdoor covers and tourist weeks.
+> I own a small bowling alley in Seattle, US. If electricity per kilowatt-hour exceeds $19.6, our operating costs would increase. Can I offset this risk?
 
-**Northline Dental** (Manchester NH, financing)
+Should find a good hedge as of 21/08/2026.
 
-> I run a dental practice in Manchester, NH. A floating-rate reset toward 4.75% would raise our equipment-loan payments.
+**London Trucking Company** (UK, fuel)
 
-**Harbor Street Books** (Portland ME, missing market)
+> I run a four-truck fleet in London, UK. Diesel above 1.81 GBP per litre could cost us about £5,000 this year.
 
-> I run a bookstore in Portland, Maine. A weak cruise-ship weekend would cut our walk-in sales.
-
-Harbor Street Books is a **missing-market** case. Do not force a match; `present_hedge` with `verdict=none` is a valid result.
+Should not find a good hedge as Kalshi has market for US diesel in dollars per gallon that expire this month, same-day or month-end Brent and WTI strikes, and US gasoline year-highs, but those do not pay when UK fuel duty, VAT, wholesale, or sterling moves London pump prices independently of a US gallon or crude print.
 
 openhedge does not place trades. Review live price, size, fees, eligibility, and rules on Kalshi before doing anything with a suggested market.
 
@@ -325,3 +328,8 @@ uv run --project openhedge-core python -m openhedge_core.sync_markets
 uv run --project openhedge-core python -m openhedge_core.server
 uv run --project openhedge-core python -m openhedge_core.mcp_server
 ```
+
+
+## Landing page
+
+The landing page is a separate Next.js app in [`web/`](web/). Deploy it with [`.agents/skills/how-to-deploy-landing/SKILL.md`](.agents/skills/how-to-deploy-landing/SKILL.md) — never onto the OSS Railway project. It is for showcasing the MCP, not for self-hosting.

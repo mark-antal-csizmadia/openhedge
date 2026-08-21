@@ -6,3 +6,10 @@
 
 # macOS
 .DS_Store
+
+# landing page (Next.js) — isolated from OSS Python/uv
+web/node_modules
+web/.next
+web/out
+web/.turbo
+web/next-env.d.ts
