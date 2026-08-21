@@ -58,6 +58,7 @@ def test_size_hedge_yes_full_coverage() -> None:
     assert candidate.target_payout_dollars == pytest.approx(100.0)
     assert candidate.unconstrained_contracts == pytest.approx(100.0)
     assert candidate.coverage_achieved == pytest.approx(1.0)
+    assert candidate.unhedged_hit_dollars == pytest.approx(0.0)
     assert candidate.net_if_pays == pytest.approx(-40.0)
     assert candidate.net_if_expires == pytest.approx(-40.0)
     assert candidate.liquidity_constrained is False
@@ -77,7 +78,8 @@ def test_size_hedge_applies_coverage() -> None:
     assert candidate.target_payout_dollars == pytest.approx(90.0)
     assert candidate.unconstrained_contracts == pytest.approx(90.0)
     assert candidate.coverage_achieved == pytest.approx(0.9)
-    assert candidate.net_if_pays == pytest.approx(-26.0)
+    assert candidate.unhedged_hit_dollars == pytest.approx(10.0)
+    assert candidate.net_if_pays == pytest.approx(-46.0)
     assert candidate.net_if_expires == pytest.approx(-36.0)
     assert candidate.liquidity_constrained is False
 
@@ -96,7 +98,8 @@ def test_size_hedge_caps_at_available_size() -> None:
     assert candidate.target_payout_dollars == pytest.approx(100.0)
     assert candidate.unconstrained_contracts == pytest.approx(100.0)
     assert candidate.coverage_achieved == pytest.approx(0.1)
-    assert candidate.net_if_pays == pytest.approx(86.0)
+    assert candidate.unhedged_hit_dollars == pytest.approx(90.0)
+    assert candidate.net_if_pays == pytest.approx(-94.0)
     assert candidate.liquidity_constrained is True
 
 
@@ -128,6 +131,7 @@ def test_size_hedge_without_hit_is_unit_economics() -> None:
     assert candidate.target_payout_dollars == pytest.approx(1.0)
     assert candidate.unconstrained_contracts == pytest.approx(1.0)
     assert candidate.coverage_achieved is None
+    assert candidate.unhedged_hit_dollars is None
     assert candidate.net_if_pays is None
     assert candidate.net_if_expires is None
     assert candidate.liquidity_constrained is False

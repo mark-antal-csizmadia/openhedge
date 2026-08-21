@@ -47,26 +47,31 @@ fetch the orderbook endpoint or walk deeper levels for a VWAP premium.
 - YES: `price = yes_ask_price`, `available_size = yes_ask_size`
 - NO: `price = 1 - yes_bid_price`, `available_size = yes_bid_size`
 
+Negative values are net cash out. `net_if_pays` is signed P&L, not leftover hit.
+`hit - payout - premium` equals that P&L only when payout = hit.
+
 If `estimated_hit_dollars` is set:
 
 - `target_payout = estimated_hit_dollars * coverage`
 - `contracts = min(round(target_payout, 2), available_size)`
 - `premium = contracts * price` (quoted ask only; no fees)
 - `gross_payout = contracts` (each contract pays $1)
-- `net_if_pays = estimated_hit_dollars - gross_payout - premium`
+- `net_if_pays = -estimated_hit_dollars + gross_payout - premium`
 - `net_if_expires = -premium`
+- `unhedged_hit_dollars = estimated_hit_dollars - gross_payout`
 
 The candidate echoes `estimated_hit_dollars`, requested `coverage`, `target_payout_dollars`
 (unconstrained gross target), and `unconstrained_contracts` (that target before the book
 cap). `coverage_achieved` is `gross_payout_dollars / estimated_hit_dollars` when a hit was
 given (null for unit economics). It is payout versus modeled loss, not versus requested
-`coverage`. Read target versus filled size from those fields; do not reconstruct them.
+`coverage`. `unhedged_hit_dollars` is residual exposure (hit minus payout), kept separate
+from P&L. Read target versus filled size from those fields; do not reconstruct them.
 
 Each call is sized independently against the full hit. Overlapping contracts (same event,
 several strikes) can overstate coverage.
 
 If no dollar hit is given, the same formulas run with `target_payout = $1` (unit economics)
-and `net_if_pays` / `net_if_expires` are omitted.
+and `net_if_pays` / `net_if_expires` / `unhedged_hit_dollars` are omitted.
 
 `liquidity_constrained` is true when top-of-book size is smaller than the unconstrained
 contract count. Size is capped at that quoted ask; `hedge` does not fill remaining size
@@ -120,7 +125,7 @@ class HedgeParams(BaseModel):
         gt=0,
         description=(
             "Modeled dollar loss if the adverse event happens. Omit to get unit economics "
-            "(contracts sized for $1 of payout) without residual P&L."
+            "(contracts sized for $1 of payout) without signed P&L."
         ),
     )
     coverage: float = Field(
@@ -178,11 +183,19 @@ class HedgeCandidate(BaseModel):
             "hit was given. This is payout versus modeled loss, not versus requested coverage."
         ),
     )
+    unhedged_hit_dollars: float | None = Field(
+        default=None,
+        description=(
+            "Residual exposure: estimated_hit_dollars minus gross_payout_dollars. "
+            "Null when no dollar hit was given. Not P&L; net_if_pays is the signed cash result."
+        ),
+    )
     net_if_pays: float | None = Field(
         default=None,
         description=(
-            "estimated_hit_dollars minus gross_payout_dollars minus premium_dollars. "
-            "Ignores fees. Null when no dollar hit was given."
+            "Signed P&L if `side` wins: minus estimated_hit_dollars plus gross_payout_dollars "
+            "minus premium_dollars. Negative is net cash out. Ignores fees. Null when no "
+            "dollar hit was given."
         ),
     )
     net_if_expires: float | None = Field(
@@ -269,10 +282,12 @@ def size_hedge(market: Market, params: HedgeParams) -> HedgeCandidate:
     net_if_pays: float | None = None
     net_if_expires: float | None = None
     coverage_achieved: float | None = None
+    unhedged_hit_dollars: float | None = None
     if estimated_hit_dollars is not None:
-        net_if_pays = round(estimated_hit_dollars - gross_payout - premium, CONTRACT_PRECISION)
+        net_if_pays = round(-estimated_hit_dollars + gross_payout - premium, CONTRACT_PRECISION)
         net_if_expires = round(-premium, CONTRACT_PRECISION)
         coverage_achieved = round(gross_payout / estimated_hit_dollars, COVERAGE_ACHIEVED_DECIMALS)
+        unhedged_hit_dollars = round(estimated_hit_dollars - gross_payout, CONTRACT_PRECISION)
     return HedgeCandidate(
         ticker=market.ticker,
         url=market.url,
@@ -289,6 +304,7 @@ def size_hedge(market: Market, params: HedgeParams) -> HedgeCandidate:
         target_payout_dollars=round(target_payout, CONTRACT_PRECISION),
         unconstrained_contracts=unconstrained,
         coverage_achieved=coverage_achieved,
+        unhedged_hit_dollars=unhedged_hit_dollars,
         net_if_pays=net_if_pays,
         net_if_expires=net_if_expires,
         liquidity_constrained=available_size < unconstrained,
@@ -341,11 +357,13 @@ def render_hedge_card(params: HedgeCardParams) -> str:
                 else None,
                 "unit_economics": candidate.estimated_hit_dollars is None,
                 "liquidity_constrained": candidate.liquidity_constrained,
+                "full_coverage": candidate.coverage_achieved == 1.0,
                 "unconstrained_contracts": _format_count(candidate.unconstrained_contracts),
                 "available_size": _format_count(candidate.available_size),
                 "contracts": _format_count(candidate.contracts),
                 "target": _format_dollars(candidate.target_payout_dollars),
                 "coverage_achieved": _format_coverage(candidate.coverage_achieved),
+                "unhedged": _format_dollars(candidate.unhedged_hit_dollars) if candidate.unhedged_hit_dollars else None,
             }
         )
     return _HEDGE_CARD_TEMPLATE.render(**context).strip()

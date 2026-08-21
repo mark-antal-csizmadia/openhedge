@@ -496,6 +496,7 @@ async def test_hedge_fetches_ticker_and_sizes() -> None:
     assert candidate.target_payout_dollars == pytest.approx(100.0)
     assert candidate.unconstrained_contracts == pytest.approx(100.0)
     assert candidate.coverage_achieved == pytest.approx(1.0)
+    assert candidate.unhedged_hit_dollars == pytest.approx(0.0)
     assert candidate.liquidity_constrained is False
 
 
@@ -541,8 +542,9 @@ async def test_present_hedge_fit_formats_candidate() -> None:
     assert "Gross payout if YES" in markdown
     assert "$10.00" in markdown
     assert "Net impact" in markdown
-    assert "$86.00" in markdown
-    assert "Liquidity constrained:" in markdown
+    assert "-$94.00" in markdown
+    assert "Book quoted 10 of 100 contracts" in markdown
+    assert "Still uncovered" in markdown
     assert market.url in markdown
 
 
@@ -569,6 +571,7 @@ async def test_present_hedge_unconstrained_omits_liquidity_sentence() -> None:
     assert "Cost today" in card.markdown
     assert "$40.00" in card.markdown
     assert "Liquidity constrained" not in card.markdown
+    assert "Still uncovered" not in card.markdown
 
 
 @pytest.mark.asyncio
@@ -676,6 +679,9 @@ async def test_list_prompts_and_resources() -> None:
     assert "ignores fees" in resource_text
     assert "coverage_achieved" in resource_text
     assert "present_hedge" in resource_text
+    assert "Negative values are net cash out" in resource_text
+    assert "signed P&L, not leftover hit" in resource_text
+    assert "unhedged_hit_dollars" in resource_text
 
 
 @pytest.mark.asyncio

@@ -73,8 +73,8 @@ Workflow:
    hedge once per kept ticker with that ticker, side, and optional estimated_hit_dollars.
    You may call hedge in parallel. hedge fetches that market and sizes a cash-flow hedge;
    it does not search. Read target versus filled size from the candidate
-   (target_payout_dollars, unconstrained_contracts, coverage_achieved); do not reconstruct
-   them. If none map cleanly, do not call hedge.
+   (target_payout_dollars, unconstrained_contracts, coverage_achieved, unhedged_hit_dollars);
+   do not reconstruct them. If none map cleanly, do not call hedge.
 4. Use present_hedge as the last step. For a kept ticker, pass the unmodified hedge payload
    as candidate with verdict=fit, plus headline, why_this_pays, and basis_risk. If none fits, call
    present_hedge with verdict=none and no candidate (omit why_this_pays). Paste markdown as the
@@ -194,7 +194,7 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
                 gt=0,
                 description=(
                     "Modeled dollar loss if the adverse event happens. Omit to get unit economics "
-                    "(contracts sized for $1 of payout) without residual P&L."
+                    "(contracts sized for $1 of payout) without signed P&L."
                 ),
             ),
         ] = None,
@@ -218,8 +218,8 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
 
         It fetches the ticker and sizes a buy of that side at the current best ask only
         (no deeper book / VWAP). The candidate includes premium (fees omitted), gross $1
-        payout, residual P&L when a dollar hit is given, and whether top-of-book size
-        capped the position. Calls are sized independently. It does not place orders;
+        payout, signed P&L when a dollar hit is given, unhedged leftover hit, and whether
+        top-of-book size capped the position. Calls are sized independently. It does not place orders;
         send the user to url.
 
         Args:
@@ -231,7 +231,7 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         Returns:
             One sized candidate (`ticker`, `url`, `question`, sizing numbers, and echoes of
             estimated_hit_dollars, coverage, target_payout_dollars, unconstrained_contracts,
-            coverage_achieved).
+            coverage_achieved, unhedged_hit_dollars).
 
         Raises:
             ToolError: If the ticker is missing (upstream 404).
@@ -477,8 +477,8 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
             "3. Call hedge once per kept ticker. Default side is yes; use no when that "
             "market's NO resolution is the hedge. If they gave a dollar loss, pass the same "
             "estimated_hit_dollars on each call. You may call hedge in parallel. Read "
-            "target_payout_dollars, unconstrained_contracts, and coverage_achieved; do not "
-            "reconstruct them.\n"
+            "target_payout_dollars, unconstrained_contracts, coverage_achieved, and "
+            "unhedged_hit_dollars; do not reconstruct them.\n"
             "4. Call present_hedge once per kept ticker with verdict=fit. Pass the hedge "
             "tool result unmodified as candidate, plus headline, why_this_pays, and "
             "basis_risk. Paste markdown as the user reply; do not restate dollars in "

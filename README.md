@@ -255,14 +255,15 @@ unconstrained_contracts = round(target_payout, 2)
 contracts = min(unconstrained_contracts, round(available_size, 2))
 premium = contracts * price
 gross_payout = contracts          # each contract pays $1
-net_if_pays = estimated_hit_dollars - gross_payout - premium
+net_if_pays = -estimated_hit_dollars + gross_payout - premium
 net_if_expires = -premium
+unhedged_hit_dollars = estimated_hit_dollars - gross_payout
 coverage_achieved = gross_payout / estimated_hit_dollars
 ```
 
-`coverage_achieved` is payout versus modeled loss, not versus requested `coverage`. `liquidity_constrained` is true when top-of-book size is smaller than `unconstrained_contracts`. Size is capped at that quoted ask; remaining size is not filled at worse prices.
+Negative values are net cash out. `net_if_pays` is signed P&L, not leftover hit. `hit − payout − premium` equals that P&L only when payout = hit. `unhedged_hit_dollars` is residual exposure (hit minus payout). `coverage_achieved` is payout versus modeled loss, not versus requested `coverage`. `liquidity_constrained` is true when top-of-book size is smaller than `unconstrained_contracts`. Size is capped at that quoted ask; remaining size is not filled at worse prices.
 
-If no dollar hit is given, the same formulas run with `target_payout = $1` (unit economics). `net_if_pays` and `net_if_expires` are omitted.
+If no dollar hit is given, the same formulas run with `target_payout = $1` (unit economics). `net_if_pays`, `net_if_expires`, and `unhedged_hit_dollars` are omitted.
 
 Each call is sized independently against the full hit. Overlapping contracts (same event, several strikes) can overstate coverage.
 
@@ -277,12 +278,13 @@ Suppose the modeled hit is **$10,000**, you want full coverage, and the best YES
 | `premium` | $2,000 |
 | `gross_payout` | $10,000 |
 | `coverage_achieved` | 1.0 |
-| `net_if_pays` (event happens) | $10,000 − $10,000 − $2,000 = **−$2,000** |
+| `unhedged_hit_dollars` | $0 |
+| `net_if_pays` (event happens) | −$10,000 + $10,000 − $2,000 = **−$2,000** |
 | `net_if_expires` (event does not) | **−$2,000** |
 
 You pay $2,000 up front in both worlds. If the event happens, the $10,000 market payout offsets the $10,000 hit, and the leftover is the premium. If the event does not happen, you still spent the premium and the business hit did not land.
 
-If the book only quoted 4,000 contracts, `liquidity_constrained` would be true, `contracts` would be 4,000, `gross_payout` $4,000, and `coverage_achieved` 0.4.
+If the book only quoted 4,000 contracts, `liquidity_constrained` would be true, `contracts` would be 4,000, `gross_payout` $4,000, `coverage_achieved` 0.4, `unhedged_hit_dollars` $6,000, and `net_if_pays` −$6,000 − $800 premium = **−$6,800**.
 
 ### When none fits
 
