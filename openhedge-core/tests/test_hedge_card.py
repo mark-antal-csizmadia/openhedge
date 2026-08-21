@@ -80,6 +80,7 @@ def test_compose_hedge_card_fit_unconstrained() -> None:
     assert "What can differ" in markdown
     assert "The closest market follows crude rather than diesel." in markdown
     assert "Liquidity constrained" not in markdown
+    assert "Still uncovered" not in markdown
     assert "No market found" not in markdown
     assert "### Other exposures" not in markdown
     assert "You pay up front" not in markdown
@@ -121,19 +122,53 @@ def test_compose_hedge_card_fit_liquidity_constrained() -> None:
         )
     )
     markdown = card.markdown
+    assert "covering the $100" not in markdown
+    assert (
+        "Crude is the closest listed strike. Filled 10 contracts ($10.00 gross) "
+        "against the $100.00 you estimated (coverage 0.1)."
+    ) in markdown
     assert "Cost today" in markdown
     assert "$4.00" in markdown
     assert "Gross payout if YES" in markdown
     assert "$10.00" in markdown
     assert "Net impact" in markdown
-    assert "$86.00" in markdown
-    assert "Liquidity constrained:" in markdown
-    assert "wanted 100 contracts ($100.00)" in markdown
-    assert "book quoted 10" in markdown
-    assert "Filled 10 contracts ($10.00 gross)" in markdown
-    assert "coverage achieved 0.1 of estimated hit" in markdown
+    assert "-$94.00" in markdown
+    assert "$86.00" not in markdown
+    assert "Book quoted 10 of 100 contracts ($100.00 target)" in markdown
+    assert "filled 10 ($10.00 gross, coverage 0.1)" in markdown
+    assert "Size is capped at that ask." in markdown
+    assert "Still uncovered" in markdown
+    assert "$90.00" in markdown
+    assert "Liquidity constrained:" not in markdown
     assert "What can differ" in markdown
     assert "Crude is a proxy." in markdown
+
+
+def test_compose_hedge_card_fit_partial_coverage() -> None:
+    candidate = size_hedge(
+        _market(ticker="MKT-1"),
+        HedgeParams(ticker="MKT-1", estimated_hit_dollars=100.0, coverage=0.9, side="yes"),
+    )
+    card = compose_hedge_card(
+        HedgeCardParams(
+            verdict="fit",
+            headline="Diesel spike.",
+            why_this_pays="Crude is the closest listed strike",
+            basis_risk="Crude is a proxy.",
+            candidate=candidate,
+        )
+    )
+    markdown = card.markdown
+    assert "covering the $100" not in markdown
+    assert (
+        "Crude is the closest listed strike. Filled 90 contracts ($90.00 gross) "
+        "against the $100.00 you estimated (coverage 0.9)."
+    ) in markdown
+    assert "-$46.00" in markdown
+    assert "Still uncovered" in markdown
+    assert "$10.00" in markdown
+    assert "Book quoted" not in markdown
+    assert "Size is capped at that ask." not in markdown
 
 
 def test_compose_hedge_card_unit_economics_omits_hit_worlds() -> None:

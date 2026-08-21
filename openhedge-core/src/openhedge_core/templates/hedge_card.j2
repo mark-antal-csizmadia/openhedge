@@ -21,7 +21,11 @@ What can differ
 {{ basis_risk }}
 {% else %}
 
+{% if full_coverage -%}
 {{ why_this_pays }}, covering the {{ hit }} you estimated with {{ contracts }} contracts.
+{% else -%}
+{{ why_this_pays }}. Filled {{ contracts }} contracts ({{ gross }} gross) against the {{ hit }} you estimated (coverage {{ coverage_achieved }}).
+{% endif %}
 
 The relevant market(s) identified:
 On {{ source }} · {{ side }} outcome · {{ question }}, URL: {{ url }}
@@ -46,6 +50,14 @@ Cost today
 {{ premium_signed }}
 Net impact
 {{ net_if_pays }}
+{% if liquidity_constrained %}
+Book quoted {{ available_size }} of {{ unconstrained_contracts }} contracts ({{ target }} target); filled {{ contracts }} ({{ gross }} gross, coverage {{ coverage_achieved }}). Size is capped at that ask.
+{% endif %}
+{% if unhedged %}
+
+Still uncovered
+{{ unhedged }}
+{% endif %}
 
 If the contract does not pay
 The business loss does not occur; you still paid for the contracts.
@@ -57,10 +69,6 @@ Net impact
 
 What can differ
 {{ basis_risk }}
-{% if liquidity_constrained %}
-
-Liquidity constrained: wanted {{ unconstrained_contracts }} contracts ({{ target }}); book quoted {{ available_size }}. Filled {{ contracts }} contracts ({{ gross }} gross); coverage achieved {{ coverage_achieved }} of estimated hit. Size is capped at that ask; deeper book levels are not used.
-{% endif %}
 {% endif %}
 {% if other_exposures %}
 
