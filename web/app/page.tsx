@@ -5,6 +5,7 @@ import { ExamplePrompts } from "@/components/example-prompts";
 import { InstallTabs } from "@/components/install-tabs";
 import { Mark } from "@/components/mark";
 import { BLANKET_URL, GITHUB_URL, MCP_URL, SELF_HOST_URL, X_HANDLE, X_URL } from "@/lib/mcp";
+import { SITE_LEAD, SITE_TITLE } from "@/lib/site";
 
 export default function Home() {
   return (
@@ -34,9 +35,9 @@ export default function Home() {
         <section className="flex flex-col gap-6">
           <Badge variant="outline">MCP</Badge>
           <h1 className="max-w-2xl font-heading text-3xl leading-[1.15] tracking-tight text-balance sm:text-4xl">
-            Open source experimental tool for discovering relevant hedges using event
-            contracts and prediction markets
+            {SITE_TITLE}
           </h1>
+          <p className="max-w-2xl text-lg leading-relaxed text-pretty sm:text-xl">{SITE_LEAD}</p>
           <p className="max-w-lg text-base leading-relaxed text-muted-foreground text-pretty">
             Inspired by{" "}
             <a href={BLANKET_URL} className="text-foreground underline-offset-4 hover:underline">

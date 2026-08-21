@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
-import { SITE_URL } from "@/lib/mcp";
+import { SITE_URL, X_HANDLE, X_URL } from "@/lib/mcp";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE } from "@/lib/site";
 
 import "./globals.css";
 
@@ -17,9 +18,32 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "Open source experimental tool for discovering relevant hedges using event contracts and prediction markets",
-  description:
-    "Inspired by Blanket (https://tryblanket.app/). Install the hosted MCP in Grok, Cursor, Codex, or Claude. openhedge does not hold money or place trades.",
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  authors: [{ name: "Mark Csizmadia", url: X_URL }],
+  creator: X_HANDLE,
+  alternates: {
+    canonical: SITE_URL,
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: SITE_URL,
+    siteName: SITE_NAME,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    creator: X_HANDLE,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0c1612",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
