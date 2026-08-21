@@ -11,23 +11,27 @@ openhedge is an open source experimental tool that helps discover and find relev
 
 Components:
 - `openhedge-core`: a Python library (`src/openhedge_core`), Python 3.12+
+- `web/`: Next.js landing page (npm). Isolated from the OSS Python stack.
 
 For install and how to run the stack, follow [`.agents/skills/how-to-get-started/SKILL.md`](.agents/skills/how-to-get-started/SKILL.md).
 To self-host on Railway (GitHub-sourced), follow [`.agents/skills/how-to-deploy-to-railway/SKILL.md`](.agents/skills/how-to-deploy-to-railway/SKILL.md).
 To publish the Railway marketplace template, follow [`.agents/skills/how-to-publish-railway-template/SKILL.md`](.agents/skills/how-to-publish-railway-template/SKILL.md).
 To add Cloudflare Tunnel on an existing stack, follow [`.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md).
 To connect MCP and try example hedges, follow [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/skills/try-hedging-examples/SKILL.md).
+To deploy the landing page (separate Railway project), follow [`.agents/skills/how-to-deploy-landing/SKILL.md`](.agents/skills/how-to-deploy-landing/SKILL.md).
 
 ## Layout
 
 - [`openhedge-core/`](openhedge-core/) — uv project (`pyproject.toml`, `uv.lock`, `src/`)
+- [`web/`](web/) — Next.js + shadcn landing page (npm). Do not add it to Compose, [`deploy/railway/`](deploy/railway/), or the OSS Railway project.
 - [`deploy/caddy/`](deploy/caddy/) — Caddy reverse proxy (Railway public edge; streamable HTTP)
 - [`deploy/railway/`](deploy/railway/) — per-service Railway config-as-code for the hosted template (not a root `railway.toml`)
-- [`.pre-commit-config.yaml`](.pre-commit-config.yaml) — root hooks for ruff format/check and mypy on `openhedge-core/`
+- [`deploy/web/`](deploy/web/) — Railway config for the landing page project only
+- [`.pre-commit-config.yaml`](.pre-commit-config.yaml) — root hooks for ruff format/check and mypy on `openhedge-core/` (not `web/`)
 
 ## Package Management with `uv`
 
-Use `uv` exclusively. Never use `pip`, `pip-tools`, or `poetry` for dependency management.
+Use `uv` exclusively for Python (`openhedge-core`). Never use `pip`, `pip-tools`, or `poetry`. The landing page in `web/` uses npm; do not run `uv` there.
 
 Run commands from the repo root with `--project openhedge-core`:
 

@@ -59,28 +59,18 @@ Report the count. There should be tens of thousands of markets for a meaningful 
 
 Source: [tryblanket.app/#examples](https://tryblanket.app/#examples). Offer these; run the one the user picks. Only Atlas publishes a first-person sentence; the rest match that voice from the case title and homepage chips.
 
-**Atlas Trucking** (Denver, fuel)
+**Sweden AI App Building Platform** (Sweden, AI compute)
 
-> I run a four-truck fleet in Denver. Diesel above $5 could cost us about $50,000 this year.
+> I run an AI app building platform in Stockholm, Sweden. NVIDIA H100 GPU hourly price above $2.75 could increase our inference cost by $1,000 next month.
 
-**Wrigleyville Tap** (Chicago, sports)
+**Berlin Sports Bar** (Germany, sports)
 
-> I run a bar in Wrigleyville. If the Cubs win, I want to fund a customer offer; the promo could cost us about $5,000.
+> I run a bar in Berlin, Germany. If the Union Berlin win a Bundesliga match, I want to fund a customer offer; the promo could cost us about $1,000.
 
-**Prairie Gold Farms** (Iowa, input)
+**US Bowling Alley** (USA, electricity)
 
-> I farm in central Iowa. A fertilizer jump toward $1,000 a ton would squeeze this season’s margins.
+> I own a small bowling alley in Seattle, US. If electricity per kilowatt-hour exceeds $19.6, our operating costs would increase. Can I offset this risk?
 
-**Taverna Bonfouca** (New Orleans, weather)
+**London Trucking Company** (UK, fuel)
 
-> I run a restaurant in New Orleans. A major hurricane this season would wipe out our outdoor covers and tourist weeks.
-
-**Northline Dental** (Manchester NH, financing)
-
-> I run a dental practice in Manchester, NH. A floating-rate reset toward 4.75% would raise our equipment-loan payments.
-
-**Harbor Street Books** (Portland ME, missing market)
-
-> I run a bookstore in Portland, Maine. A weak cruise-ship weekend would cut our walk-in sales.
-
-Harbor Street Books is a **missing-market** case. Do not force a match; `present_hedge` with `verdict=none` is a valid result.
+> I run a four-truck fleet in London, UK. Diesel above 1.81 GBP per litre could cost us about £5,000 this year.
