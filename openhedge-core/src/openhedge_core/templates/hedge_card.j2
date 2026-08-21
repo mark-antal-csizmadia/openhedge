@@ -1,43 +1,68 @@
-## {{ headline }}
+Your business risk: {{ headline }}
+{% if verdict == "none" %}
+
+No market found — no hedge.
 
 {{ basis_risk }}
-{% if verdict == "none" -%}
+{% elif unit_economics %}
 
-No current market fits this exposure.
-{% elif unit_economics -%}
+{{ why_this_pays }}
 
-You pay up front: {{ premium }}
-Market pays gross: {{ gross }} (unit $1.00 payout)
+The relevant market(s) identified:
+On {{ source }} · {{ side }} outcome · {{ question }}, URL: {{ url }}
 
-{{ question }} ({{ side }})
+Cost today
+{{ premium }}
 
-Open this market: {{ url }}
-{% else -%}
+Gross payout if {{ side }}
+{{ gross }} (unit $1.00 payout)
 
-You pay up front: {{ premium }}
-Estimated hit: {{ hit }}
-Market pays gross: {{ gross }}
+What can differ
+{{ basis_risk }}
+{% else %}
 
-{{ question }} ({{ side }})
+{{ why_this_pays }}, covering the {{ hit }} you estimated with {{ contracts }} contracts.
 
-### Event happens
+The relevant market(s) identified:
+On {{ source }} · {{ side }} outcome · {{ question }}, URL: {{ url }}
 
-Estimated hit: {{ hit_signed }}
-Market pays: {{ gross_signed }}
-Paid up front: {{ premium_signed }}
-Net: {{ net_if_pays }}
+Your estimated business loss
+{{ hit }}
 
-### Event does not
+Cost today
+{{ premium }}
 
-Net: {{ net_if_expires }}
-{% if liquidity_constrained -%}
+Gross payout if {{ side }}
+{{ gross }}
+
+If both happen
+The business loss occurs and the contract pays.
+
+Estimated business loss
+{{ hit_signed }}
+Market payout
+{{ gross_signed }}
+Cost today
+{{ premium_signed }}
+Net impact
+{{ net_if_pays }}
+
+If the contract does not pay
+The business loss does not occur; you still paid for the contracts.
+
+Cost today
+{{ premium_signed }}
+Net impact
+{{ net_if_expires }}
+
+What can differ
+{{ basis_risk }}
+{% if liquidity_constrained %}
 
 Liquidity constrained: wanted {{ unconstrained_contracts }} contracts ({{ target }}); book quoted {{ available_size }}. Filled {{ contracts }} contracts ({{ gross }} gross); coverage achieved {{ coverage_achieved }} of estimated hit. Size is capped at that ask; deeper book levels are not used.
 {% endif %}
-
-Open this market: {{ url }}
 {% endif %}
-{% if other_exposures -%}
+{% if other_exposures %}
 
 ### Other exposures
 {% for exposure in other_exposures -%}

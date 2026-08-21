@@ -3,7 +3,7 @@ from typing import Literal, Self
 from jinja2 import Environment, PackageLoader
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from openhedge_core.types.market import PRICE_DECIMALS, Market
+from openhedge_core.types.market import PRICE_DECIMALS, Market, MarketSource
 
 HedgeSide = Literal["yes", "no"]
 HedgeVerdict = Literal["fit", "none"]
@@ -85,9 +85,10 @@ hedging diesel with a crude-oil strike) must be stated explicitly. Do not call `
 until the set is worth sizing.
 
 `present_hedge` is the last step. When none fits, call it with `verdict=none` and no
-candidate; do not call `hedge`. When a ticker is kept, call `hedge` then `present_hedge`
-with that payload unmodified as `candidate`. Paste `markdown` as the user reply; do not
-restate dollars in different figures.
+candidate or `why_this_pays`; do not call `hedge`. When a ticker is kept, call `hedge`
+then `present_hedge` with that payload unmodified as `candidate`, plus `headline`,
+`why_this_pays`, and `basis_risk`. Paste `markdown` as the user reply; do not restate
+dollars in different figures.
 
 openhedge does not place orders. Send the user to `url` on the source venue.
 """
@@ -139,6 +140,7 @@ class HedgeCandidate(BaseModel):
     ticker: str = Field(description="Market primary key.")
     url: str = Field(description="Canonical URL of the market on the source platform.")
     question: str = Field(description="Question of the market.")
+    source: MarketSource = Field(description="Source platform of the market.")
     side: HedgeSide = Field(description="Side bought: yes or no.")
     price_per_contract: float = Field(
         description="Best ask for `side` in dollars. For no, this is 1 minus yes_bid_price.",
@@ -202,6 +204,14 @@ class HedgeCardParams(BaseModel):
 
     verdict: HedgeVerdict = Field(description="fit when a sized candidate is kept; none when no market maps cleanly.")
     headline: str = Field(min_length=1, description="Restated user exposure in one line.")
+    why_this_pays: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Why this market pays when the exposure hits. Required for fit; omit for none. "
+            "Do not put dollar figures here."
+        ),
+    )
     basis_risk: str = Field(
         min_length=1,
         description="Why this market is a proxy (or why none fits). Do not put dollar figures here.",
@@ -221,6 +231,10 @@ class HedgeCardParams(BaseModel):
             raise ValueError("verdict=fit requires candidate")
         if self.verdict == "none" and self.candidate is not None:
             raise ValueError("verdict=none rejects candidate")
+        if self.verdict == "fit" and self.why_this_pays is None:
+            raise ValueError("verdict=fit requires why_this_pays")
+        if self.verdict == "none" and self.why_this_pays is not None:
+            raise ValueError("verdict=none rejects why_this_pays")
         return self
 
 
@@ -229,6 +243,10 @@ class HedgeCard(BaseModel):
 
     verdict: HedgeVerdict = Field(description="fit or none.")
     headline: str = Field(description="Restated user exposure in one line.")
+    why_this_pays: str | None = Field(
+        default=None,
+        description="Why this market pays when the exposure hits. Null when verdict is none.",
+    )
     basis_risk: str = Field(description="Why this market is a proxy, or why none fits.")
     other_exposures: list[str] = Field(description="Related risks noticed but not sized on this card.")
     candidate: HedgeCandidate | None = Field(
@@ -259,6 +277,7 @@ def size_hedge(market: Market, params: HedgeParams) -> HedgeCandidate:
         ticker=market.ticker,
         url=market.url,
         question=market.question,
+        source=market.source,
         side=params.side,
         price_per_contract=round(price, PRICE_DECIMALS),
         available_size=round(available_size, CONTRACT_PRECISION),
@@ -281,6 +300,7 @@ def compose_hedge_card(params: HedgeCardParams) -> HedgeCard:
     return HedgeCard(
         verdict=params.verdict,
         headline=params.headline,
+        why_this_pays=params.why_this_pays,
         basis_risk=params.basis_risk,
         other_exposures=list(params.other_exposures),
         candidate=params.candidate,
@@ -294,6 +314,7 @@ def render_hedge_card(params: HedgeCardParams) -> str:
     context: dict[str, object] = {
         "verdict": params.verdict,
         "headline": params.headline,
+        "why_this_pays": params.why_this_pays,
         "basis_risk": params.basis_risk,
         "other_exposures": params.other_exposures,
         "unit_economics": False,
@@ -303,6 +324,7 @@ def render_hedge_card(params: HedgeCardParams) -> str:
         context.update(
             {
                 "question": candidate.question,
+                "source": _format_source(candidate.source),
                 "side": candidate.side.upper(),
                 "url": candidate.url,
                 "premium": _format_dollars(candidate.premium_dollars),
@@ -335,6 +357,10 @@ def _ask_for_side(market: Market, side: HedgeSide) -> tuple[float, float]:
     return 1.0 - market.yes_bid_price, market.yes_bid_size
 
 
+def _format_source(source: MarketSource) -> str:
+    return source.value.replace("_", " ").title()
+
+
 def _format_dollars(value: float) -> str:
     sign = "-" if value < 0 else ""
     return f"{sign}${abs(value):,.2f}"
@@ -346,6 +372,8 @@ def _format_signed_dollars(value: float) -> str:
 
 
 def _format_count(value: float) -> str:
+    if value == int(value):
+        return f"{int(value):,}"
     return f"{value:,.2f}"
 
 

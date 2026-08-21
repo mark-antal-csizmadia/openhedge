@@ -207,12 +207,15 @@ async def test_list_tools_documents_api_surface() -> None:
     assert "verdict" in present_props
     assert "headline" in present_props
     assert "basis_risk" in present_props
+    assert "why_this_pays" in present_props
     assert "candidate" in present_props
     assert "params" not in (present_schema.get("properties") or {})
     present_description = (by_name["present_hedge"].description or "").lower()
     assert "markdown" in present_description
     assert "unmodified" in present_description
     assert "present_hedge" in INSTRUCTIONS
+    assert "do not force a fit" in INSTRUCTIONS.lower()
+    assert "why_this_pays" in INSTRUCTIONS
     assert "natural-language" in (by_name["search_markets"].description or "").lower()
     assert "strike_order" in (by_name["get_event"].description or "")
     get_event_description = (by_name["get_event"].description or "").lower()
@@ -484,6 +487,7 @@ async def test_hedge_fetches_ticker_and_sizes() -> None:
     assert candidate.ticker == "MKT-0"
     assert candidate.url == market.url
     assert candidate.question == "Active market"
+    assert candidate.source == market.source
     assert candidate.side == "yes"
     assert candidate.contracts == pytest.approx(100.0)
     assert candidate.premium_dollars == pytest.approx(40.0)
@@ -519,6 +523,7 @@ async def test_present_hedge_fit_formats_candidate() -> None:
             {
                 "verdict": "fit",
                 "headline": "Diesel above $5 could cost this business $100.",
+                "why_this_pays": "Diesel above $5 is the cost jump you flagged, so this pays when delivery costs rise",
                 "basis_risk": "The closest market follows crude rather than diesel.",
                 "candidate": candidate.model_dump(mode="json"),
             },
@@ -530,9 +535,13 @@ async def test_present_hedge_fit_formats_candidate() -> None:
     assert card.candidate is not None
     assert card.candidate.liquidity_constrained is True
     markdown = card.markdown
-    assert "You pay up front: $4.00" in markdown
-    assert "Market pays gross: $10.00" in markdown
-    assert "Net: $86.00" in markdown
+    assert "Your business risk:" in markdown
+    assert "Cost today" in markdown
+    assert "$4.00" in markdown
+    assert "Gross payout if YES" in markdown
+    assert "$10.00" in markdown
+    assert "Net impact" in markdown
+    assert "$86.00" in markdown
     assert "Liquidity constrained:" in markdown
     assert market.url in markdown
 
@@ -551,12 +560,14 @@ async def test_present_hedge_unconstrained_omits_liquidity_sentence() -> None:
             {
                 "verdict": "fit",
                 "headline": "Headline",
+                "why_this_pays": "This contract pays on the named strike",
                 "basis_risk": "Basis",
                 "candidate": candidate.model_dump(mode="json"),
             },
         )
     card = HedgeCard.model_validate(result.structured_content)
-    assert "You pay up front: $40.00" in card.markdown
+    assert "Cost today" in card.markdown
+    assert "$40.00" in card.markdown
     assert "Liquidity constrained" not in card.markdown
 
 
@@ -574,8 +585,8 @@ async def test_present_hedge_none_omits_dollars() -> None:
         )
     card = HedgeCard.model_validate(result.structured_content)
     assert card.candidate is None
-    assert "No current market fits this exposure." in card.markdown
-    assert "You pay up front" not in card.markdown
+    assert "No market found — no hedge." in card.markdown
+    assert "Cost today" not in card.markdown
     assert "$" not in card.markdown
 
 
@@ -586,7 +597,32 @@ async def test_present_hedge_fit_without_candidate_is_tool_error() -> None:
         with pytest.raises(ToolError, match="verdict=fit requires candidate"):
             await client.call_tool(
                 "present_hedge",
-                {"verdict": "fit", "headline": "Headline", "basis_risk": "Basis"},
+                {
+                    "verdict": "fit",
+                    "headline": "Headline",
+                    "why_this_pays": "This contract pays on the named strike",
+                    "basis_risk": "Basis",
+                },
+            )
+
+
+@pytest.mark.asyncio
+async def test_present_hedge_fit_without_why_this_pays_is_tool_error() -> None:
+    candidate = size_hedge(
+        _market(ticker="MKT-0"),
+        HedgeParams(ticker="MKT-0", estimated_hit_dollars=100.0, side="yes"),
+    )
+    mcp = create_mcp(api_client=FakeApiClient())
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match="verdict=fit requires why_this_pays"):
+            await client.call_tool(
+                "present_hedge",
+                {
+                    "verdict": "fit",
+                    "headline": "Headline",
+                    "basis_risk": "Basis",
+                    "candidate": candidate.model_dump(mode="json"),
+                },
             )
 
 
@@ -627,7 +663,9 @@ async def test_list_prompts_and_resources() -> None:
     assert "diesel above $5" in prompt_text
     assert "search_markets" in prompt_text.lower()
     assert "get_market" in prompt_text.lower()
-    assert "none fits" in prompt_text.lower()
+    assert "do not force a fit" in prompt_text.lower()
+    assert "verdict=none is success" in prompt_text.lower()
+    assert "why_this_pays" in prompt_text.lower()
     assert "present_hedge" in prompt_text.lower()
     assert "markdown" in prompt_text.lower()
     assert "hedge" in prompt_text.lower()
