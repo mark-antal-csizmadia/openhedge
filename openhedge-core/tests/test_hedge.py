@@ -44,6 +44,7 @@ def test_size_hedge_yes_full_coverage() -> None:
     assert candidate.ticker == "MKT-1"
     assert candidate.url == market.url
     assert candidate.question == "Active market"
+    assert candidate.source == MarketSource.KALSHI
     assert "description" not in candidate.model_dump()
     assert "market" not in candidate.model_dump()
     assert candidate.side == "yes"

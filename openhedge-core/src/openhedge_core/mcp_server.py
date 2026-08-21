@@ -49,6 +49,11 @@ _READ_ONLY_TOOL = ToolAnnotations(
 INSTRUCTIONS = """\
 openhedge discovers hedges in event contracts and prediction markets. It does not place orders.
 
+Honesty: search returns nearest neighbors, not hedges. Do not force a fit. If question, outcomes,
+or resolution rules do not map cleanly to the user's exposure, do not call hedge. Call
+present_hedge with verdict=none and no candidate. An honest gap is the correct result; do not
+pick the least-bad neighbor. State basis risk explicitly.
+
 Workflow:
 1. Use search_markets (try several queries or add filters) when the user describes an exposure in
    prose. Use browse_markets when they already have structured filters. Hits are compact:
@@ -71,12 +76,11 @@ Workflow:
    (target_payout_dollars, unconstrained_contracts, coverage_achieved); do not reconstruct
    them. If none map cleanly, do not call hedge.
 4. Use present_hedge as the last step. For a kept ticker, pass the unmodified hedge payload
-   as candidate with verdict=fit, plus headline and basis_risk. If none fits, call
-   present_hedge with verdict=none and no candidate. Paste markdown as the user reply; do
-   not restate dollars in different figures.
+   as candidate with verdict=fit, plus headline, why_this_pays, and basis_risk. If none fits, call
+   present_hedge with verdict=none and no candidate (omit why_this_pays). Paste markdown as the
+   user reply; do not restate dollars in different figures.
 5. Use get_market to fetch the full record for one ticker, including description.
 
-Honesty: search returns nearest neighbors, not guaranteed hedges. State basis risk explicitly.
 Read resource openhedge://docs/hedge-math for settlement, Yes/No complement, and sizing formulas.
 The hedge_risk prompt is the playbook for collecting markets then sizing.
 
@@ -255,6 +259,16 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
                 description="Why this market is a proxy (or why none fits). Do not put dollar figures here.",
             ),
         ],
+        why_this_pays: Annotated[
+            str | None,
+            Field(
+                min_length=1,
+                description=(
+                    "Why this market pays when the exposure hits. Required for fit; omit for none. "
+                    "Do not put dollar figures here."
+                ),
+            ),
+        ] = None,
         candidate: Annotated[
             HedgeCandidate | None,
             Field(description="Unmodified hedge tool result. Required for fit; omit for none."),
@@ -269,12 +283,14 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
         Call hedge first for each kept ticker, then present_hedge once per ticker with
         verdict=fit. Pass the hedge tool result unmodified as candidate; do not round or
         invent dollar fields. If none fits, skip hedge and call present_hedge with
-        verdict=none and no candidate. Paste markdown as the user reply; do not restate
-        dollars in different figures. This tool does not fetch or re-size.
+        verdict=none and no candidate (omit why_this_pays). Paste markdown as the user
+        reply; do not restate dollars in different figures. This tool does not fetch or
+        re-size.
 
         Args:
             verdict: fit or none.
             headline: Restated user exposure.
+            why_this_pays: Why this market pays when the exposure hits; required for fit.
             basis_risk: Proxy caveat, or why none fits.
             candidate: Unmodified hedge payload; required for fit.
             other_exposures: Optional related risks not sized here.
@@ -283,12 +299,14 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
             A card with the inbound candidate (null when none) and frozen markdown.
 
         Raises:
-            ToolError: If verdict=fit is missing candidate, or verdict=none includes one.
+            ToolError: If verdict=fit is missing candidate or why_this_pays, or
+                verdict=none includes either.
         """
         try:
             params = HedgeCardParams(
                 verdict=verdict,
                 headline=headline,
+                why_this_pays=why_this_pays,
                 basis_risk=basis_risk,
                 candidate=candidate,
                 other_exposures=other_exposures or [],
@@ -453,17 +471,19 @@ def create_mcp(*, api_client: MarketApi, close_client: bool = False) -> FastMCP:
             "get_event and compare all markets by strike_order.\n"
             "2. Call get_market on shortlisted tickers. Read question, yes_outcome/no_outcome, "
             "and description (resolution rules). Keep only clean proxies. State basis risk "
-            "explicitly. Do not force a match; if none fits, do not call hedge. Call "
-            "present_hedge with verdict=none (no candidate) and paste markdown.\n"
+            "explicitly. Do not force a fit. If none maps cleanly, do not call hedge. Call "
+            "present_hedge with verdict=none (no candidate) and paste markdown. verdict=none "
+            "is success.\n"
             "3. Call hedge once per kept ticker. Default side is yes; use no when that "
             "market's NO resolution is the hedge. If they gave a dollar loss, pass the same "
             "estimated_hit_dollars on each call. You may call hedge in parallel. Read "
             "target_payout_dollars, unconstrained_contracts, and coverage_achieved; do not "
             "reconstruct them.\n"
             "4. Call present_hedge once per kept ticker with verdict=fit. Pass the hedge "
-            "tool result unmodified as candidate, plus headline and basis_risk. Paste "
-            "markdown as the user reply; do not restate dollars in different figures. "
-            "Calls are sized independently; overlapping contracts can overstate coverage.\n"
+            "tool result unmodified as candidate, plus headline, why_this_pays, and "
+            "basis_risk. Paste markdown as the user reply; do not restate dollars in "
+            "different figures. Calls are sized independently; overlapping contracts can "
+            "overstate coverage.\n"
             "5. openhedge does not execute trades.\n"
             "Read resource openhedge://docs/hedge-math if you need the settlement formulas."
         )
