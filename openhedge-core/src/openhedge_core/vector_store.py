@@ -3,8 +3,11 @@ import uuid
 from collections.abc import Sequence
 from typing import Any, ClassVar, Literal, Protocol
 
+import httpx
+import tenacity
 from pydantic import BaseModel
 from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.exceptions import ResponseHandlingException
 from qdrant_client.models import (
     Distance,
     Filter,
@@ -19,7 +22,25 @@ DEFAULT_QDRANT_URL = "http://localhost:6333"
 DEFAULT_QDRANT_COLLECTION = "markets"
 DEFAULT_POINT_ID_NAMESPACE = "https://openhedge.app/markets"
 
+RETRY_STOP_AFTER_ATTEMPT = 3
+RETRY_WAIT_MULTIPLIER = 1
+RETRY_WAIT_MIN = 4
+RETRY_WAIT_MAX = 15
+
 logger = logging.getLogger(__name__)
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    return isinstance(exc, (httpx.RequestError, ResponseHandlingException))
+
+
+_retry_writes = tenacity.retry(
+    stop=tenacity.stop_after_attempt(RETRY_STOP_AFTER_ATTEMPT),
+    wait=tenacity.wait_exponential(multiplier=RETRY_WAIT_MULTIPLIER, min=RETRY_WAIT_MIN, max=RETRY_WAIT_MAX),
+    retry=tenacity.retry_if_exception(_is_retryable),
+    before_sleep=tenacity.before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
 
 
 def point_id(ticker: str, *, namespace: str = DEFAULT_POINT_ID_NAMESPACE) -> str:
@@ -155,6 +176,7 @@ class QdrantVectorStore:
             return None
         return _record_payload(records[0].payload)
 
+    @_retry_writes
     async def upsert_points(self, points: Sequence[VectorPoint]) -> None:
         if not points:
             return
@@ -165,6 +187,7 @@ class QdrantVectorStore:
             ],
         )
 
+    @_retry_writes
     async def update_payloads(self, updates: Sequence[PayloadUpdate]) -> None:
         if not updates:
             return
@@ -185,6 +208,7 @@ class QdrantVectorStore:
             ],
         )
 
+    @_retry_writes
     async def delete_points(self, ids: Sequence[str]) -> None:
         if not ids:
             return

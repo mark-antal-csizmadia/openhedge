@@ -25,6 +25,7 @@ async def setup_collection(settings: SetupQdrantSettings) -> None:
     qdrant = AsyncQdrantClient(
         url=settings.qdrant.url,
         api_key=settings.qdrant.api_key,
+        timeout=settings.qdrant.timeout,
     )
     try:
         store = QdrantVectorStore(

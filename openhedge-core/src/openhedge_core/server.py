@@ -97,6 +97,7 @@ def create_app(
         qdrant = AsyncQdrantClient(
             url=cfg.qdrant.url,
             api_key=cfg.qdrant.api_key,
+            timeout=cfg.qdrant.timeout,
         )
         try:
             app.state.store = QdrantVectorStore(

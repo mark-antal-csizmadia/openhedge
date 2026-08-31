@@ -1,13 +1,21 @@
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from openhedge_core.filters import MarketFilters, to_qdrant_filter
-from openhedge_core.vector_store import PayloadUpdate, QdrantVectorStore, VectorPoint, point_id
+from openhedge_core.vector_store import (
+    RETRY_STOP_AFTER_ATTEMPT,
+    PayloadUpdate,
+    QdrantVectorStore,
+    VectorPoint,
+    point_id,
+)
 from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 from qdrant_client.models import Distance, VectorParams
 
 TEST_EMBEDDING_DIM = 8
@@ -349,3 +357,83 @@ async def test_ready_raises_when_collection_is_missing() -> None:
     with pytest.raises(RuntimeError, match="does not exist"):
         await store.ready()
     client.collection_exists.assert_awaited_once_with(COLLECTION)
+
+
+def _timeout() -> ResponseHandlingException:
+    return ResponseHandlingException(httpx.ReadTimeout("timed out"))
+
+
+@contextmanager
+def _retry_sleeps() -> Iterator[None]:
+    with (
+        patch("tenacity.nap.sleep", return_value=None),
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
+        yield
+
+
+@pytest.mark.asyncio
+async def test_upsert_points_retries_then_succeeds() -> None:
+    client = _client()
+    client.upsert.side_effect = [_timeout(), None]
+    store = QdrantVectorStore(client, collection=COLLECTION)
+
+    with _retry_sleeps():
+        await store.upsert_points([VectorPoint(id="MKT-NEW", vector=[0.0] * TEST_EMBEDDING_DIM, payload={})])
+
+    assert client.upsert.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_update_payloads_retries_then_succeeds() -> None:
+    ticker = "MKT-EXISTING"
+    client = _client()
+    client.retrieve.return_value = [SimpleNamespace(id=point_id(ticker))]
+    client.batch_update_points.side_effect = [_timeout(), None]
+    store = QdrantVectorStore(client, collection=COLLECTION)
+
+    with _retry_sleeps():
+        await store.update_payloads([PayloadUpdate(id=ticker, payload={"yes_ask_price": 0.7})])
+
+    assert client.batch_update_points.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_delete_points_retries_then_succeeds() -> None:
+    client = _client()
+    client.delete.side_effect = [_timeout(), None]
+    store = QdrantVectorStore(client, collection=COLLECTION)
+
+    with _retry_sleeps():
+        await store.delete_points(["MKT-CLOSED"])
+
+    assert client.delete.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_upsert_points_reraises_after_retries() -> None:
+    client = _client()
+    client.upsert.side_effect = _timeout()
+    store = QdrantVectorStore(client, collection=COLLECTION)
+
+    with _retry_sleeps(), pytest.raises(ResponseHandlingException):
+        await store.upsert_points([VectorPoint(id="MKT-NEW", vector=[0.0] * TEST_EMBEDDING_DIM, payload={})])
+
+    assert client.upsert.await_count == RETRY_STOP_AFTER_ATTEMPT
+
+
+@pytest.mark.asyncio
+async def test_upsert_points_does_not_retry_unexpected_response() -> None:
+    client = _client()
+    client.upsert.side_effect = UnexpectedResponse(
+        status_code=400,
+        reason_phrase="Bad Request",
+        content=b"",
+        headers=httpx.Headers(),
+    )
+    store = QdrantVectorStore(client, collection=COLLECTION)
+
+    with pytest.raises(UnexpectedResponse):
+        await store.upsert_points([VectorPoint(id="MKT-NEW", vector=[0.0] * TEST_EMBEDDING_DIM, payload={})])
+
+    assert client.upsert.await_count == 1

@@ -17,7 +17,11 @@ async def test_setup_collection_succeeds() -> None:
     ):
         await setup_collection(settings)
 
-    mock_client_cls.assert_called_once_with(url=settings.qdrant.url, api_key=settings.qdrant.api_key)
+    mock_client_cls.assert_called_once_with(
+        url=settings.qdrant.url,
+        api_key=settings.qdrant.api_key,
+        timeout=settings.qdrant.timeout,
+    )
     mock_store_cls.assert_called_once_with(
         mock_client,
         collection=settings.qdrant.collection,

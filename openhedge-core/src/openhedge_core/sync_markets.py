@@ -140,7 +140,7 @@ async def run(
     limiter: AsyncLimiter,
     embedder: EmbeddingClient,
     store: VectorStore,
-    batch_size: int = 100,
+    batch_size: int = 64,
     shutdown_event: asyncio.Event | None = None,
 ) -> None:
     shutdown_event = shutdown_event or asyncio.Event()
@@ -195,6 +195,7 @@ async def async_main() -> None:
     qdrant = AsyncQdrantClient(
         url=settings.qdrant.url,
         api_key=settings.qdrant.api_key,
+        timeout=settings.qdrant.timeout,
     )
     try:
         async with OpenRouter(

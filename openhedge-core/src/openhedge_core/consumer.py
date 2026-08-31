@@ -16,7 +16,7 @@ class Consumer(Generic[T]):
         consume_fn: Callable[[list[T]], Awaitable[None]],
         queue: asyncio.Queue[T],
         shutdown_event: asyncio.Event,
-        batch_size: int = 100,
+        batch_size: int = 64,
         producers_done: asyncio.Event | None = None,
     ):
         self._name = name

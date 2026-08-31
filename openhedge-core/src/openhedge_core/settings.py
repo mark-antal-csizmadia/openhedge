@@ -15,6 +15,7 @@ class QdrantSettings(BaseModel):
     api_key: str | None = None
     collection: str = DEFAULT_QDRANT_COLLECTION
     point_id_namespace: str = DEFAULT_POINT_ID_NAMESPACE
+    timeout: int = Field(default=30, ge=1)
 
 
 class OpenRouterSettings(BaseModel):
@@ -53,7 +54,7 @@ class McpServerSettings(_ServiceSettings):
 
 
 class SyncMarketsSettings(_ServiceSettings):
-    batch_size: int = Field(default=100, ge=1)
+    batch_size: int = Field(default=64, ge=1)
     qdrant: QdrantSettings = QdrantSettings()
     openrouter: RequiredOpenRouterSettings = Field(
         default_factory=lambda: RequiredOpenRouterSettings.model_construct(api_key=""),
