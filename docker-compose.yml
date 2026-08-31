@@ -47,7 +47,7 @@ services:
       QDRANT_URL: http://qdrant:6333
       QDRANT_COLLECTION: markets
       SYNC_INTERVAL_SECONDS: "3600"
-      BATCH_SIZE: ${BATCH_SIZE:-100}
+      BATCH_SIZE: ${BATCH_SIZE:-64}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
     command: ["/app/sync-loop.sh"]
     stop_grace_period: 60s
