@@ -1,6 +1,6 @@
 import logging
 import uuid
-from collections.abc import Sequence
+from collections.abc import Sequence, Set
 from typing import Any, ClassVar, Literal, Protocol
 
 import httpx
@@ -72,6 +72,8 @@ class VectorStore(Protocol):
     async def update_payloads(self, updates: Sequence[PayloadUpdate]) -> None: ...
 
     async def delete_points(self, ids: Sequence[str]) -> None: ...
+
+    async def count_points(self) -> int: ...
 
     async def scroll_points(
         self,
@@ -217,6 +219,10 @@ class QdrantVectorStore:
             points_selector=[self._point_id(ticker) for ticker in ids],
         )
 
+    async def count_points(self) -> int:
+        result = await self._client.count(collection_name=self._collection, exact=True)
+        return result.count
+
     async def scroll_points(
         self,
         filters: Filter | None,
@@ -263,6 +269,42 @@ class QdrantVectorStore:
             exact=True,
         )
         return [hit.value for hit in response.hits if isinstance(hit.value, str)]
+
+
+async def delete_points_not_in(
+    store: VectorStore,
+    keep_ids: Set[str],
+    *,
+    batch_size: int,
+    id_field: str = "ticker",
+) -> None:
+    before = await store.count_points()
+    logger.info("retain start collection_count=%s keep_ids=%s", before, len(keep_ids))
+    stored: set[str] = set()
+    cursor: str | None = None
+    while True:
+        page, cursor = await store.scroll_points(
+            None,
+            limit=batch_size,
+            cursor=cursor,
+            payload_fields=[id_field],
+        )
+        for payload in page:
+            value = payload.get(id_field)
+            if isinstance(value, str):
+                stored.add(value)
+        if cursor is None:
+            break
+    to_delete = [stored_id for stored_id in stored if stored_id not in keep_ids]
+    deleted = 0
+    for offset in range(0, len(to_delete), batch_size):
+        batch = to_delete[offset : offset + batch_size]
+        existing = await store.get_existing_ids(batch)
+        logger.info("delete batch requested=%s existing=%s", len(batch), len(existing))
+        await store.delete_points(batch)
+        deleted += len(existing)
+    after = await store.count_points()
+    logger.info("retain done collection_count=%s deleted=%s", after, deleted)
 
 
 def _payload_selector(payload_fields: Sequence[str] | None) -> bool | list[str]:

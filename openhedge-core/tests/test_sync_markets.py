@@ -10,7 +10,7 @@ from openhedge_core.apis.kalshi import EVENTS_URL, SERIES_URL
 from openhedge_core.consumer import Consumer
 from openhedge_core.embeddings import market_embedding_text
 from openhedge_core.producer import Producer
-from openhedge_core.sync_markets import consume_closed_batch, consume_open_batch, run
+from openhedge_core.sync_markets import consume_open_batch, run
 from openhedge_core.types.kalshi import KalshiEvent, KalshiMarket, KalshiSeries
 from openhedge_core.types.market import Market, MarketSource
 from openhedge_core.vector_store import PayloadUpdate, VectorPoint
@@ -55,13 +55,6 @@ EVENT_OPEN = {
     "markets": [MARKET_ACTIVE, MARKET_CLOSED],
 }
 
-EVENT_CLOSED = {
-    "event_ticker": "EVT-CLOSED",
-    "title": "Closed event",
-    "series_ticker": "SERIES",
-    "markets": [MARKET_CLOSED],
-}
-
 SERIES = {"ticker": "SERIES", "category": "Politics", "tags": ["elections"]}
 
 
@@ -93,6 +86,9 @@ class FakeVectorStore:
         for ticker in ids:
             self.points.pop(ticker, None)
 
+    async def count_points(self) -> int:
+        return len(self.points)
+
     async def scroll_points(
         self,
         filters: Filter | None,
@@ -101,7 +97,18 @@ class FakeVectorStore:
         cursor: str | None,
         payload_fields: Sequence[str] | None = None,
     ) -> tuple[list[dict[str, Any]], str | None]:
-        raise NotImplementedError
+        items = list(self.points.values())
+        start = int(cursor) if cursor is not None else 0
+        page = items[start : start + limit]
+        payloads: list[dict[str, Any]] = []
+        for point in page:
+            payload = dict(point.payload)
+            if payload_fields is not None:
+                payload = {field: payload[field] for field in payload_fields if field in payload}
+            payloads.append(payload)
+        next_offset = start + len(page)
+        next_cursor = str(next_offset) if next_offset < len(items) else None
+        return payloads, next_cursor
 
     async def query_points(
         self,
@@ -207,27 +214,13 @@ async def test_consume_open_batch_updates_payload_without_embedding() -> None:
 
 
 @pytest.mark.asyncio
-async def test_consume_closed_batch_deletes_ids() -> None:
-    store = FakeVectorStore()
-    store.points["MKT-CLOSED"] = VectorPoint(id="MKT-CLOSED", vector=[0.0], payload={})
-    store.points["KEEP"] = VectorPoint(id="KEEP", vector=[0.0], payload={})
-
-    await consume_closed_batch(["MKT-CLOSED"], store=store)
-
-    assert "MKT-CLOSED" not in store.points
-    assert "KEEP" in store.points
-
-
-@pytest.mark.asyncio
-async def test_run_syncs_open_and_closed_markets(limiter: AsyncLimiter) -> None:
+async def test_run_retains_only_open_market_tickers(limiter: AsyncLimiter) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         if url.startswith(EVENTS_URL):
             status = request.url.params.get("status")
             if status == "open":
                 return _json_response(200, {"events": [EVENT_OPEN], "cursor": None})
-            if status == "closed":
-                return _json_response(200, {"events": [EVENT_CLOSED], "cursor": None})
             raise AssertionError(f"unexpected status={status!r}")
         if url.startswith(f"{SERIES_URL}/"):
             return _json_response(200, {"series": SERIES})
@@ -237,9 +230,13 @@ async def test_run_syncs_open_and_closed_markets(limiter: AsyncLimiter) -> None:
     store.points["MKT-ACTIVE"] = VectorPoint(
         id="MKT-ACTIVE",
         vector=[1.0] * TEST_EMBEDDING_DIM,
-        payload={"yes_ask_price": 0.1, "yes_outcome": "Yes"},
+        payload={"ticker": "MKT-ACTIVE", "yes_ask_price": 0.1, "yes_outcome": "Yes"},
     )
-    store.points["MKT-CLOSED"] = VectorPoint(id="MKT-CLOSED", vector=[0.0], payload={})
+    store.points["MKT-CLOSED"] = VectorPoint(
+        id="MKT-CLOSED",
+        vector=[0.0],
+        payload={"ticker": "MKT-CLOSED"},
+    )
     embedder = RecordingEmbedder()
 
     transport = httpx.MockTransport(handler)
@@ -254,6 +251,59 @@ async def test_run_syncs_open_and_closed_markets(limiter: AsyncLimiter) -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_skips_retain_when_no_open_tickers(limiter: AsyncLimiter) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url.startswith(EVENTS_URL):
+            status = request.url.params.get("status")
+            if status == "open":
+                return _json_response(200, {"events": [], "cursor": None})
+            raise AssertionError(f"unexpected status={status!r}")
+        raise AssertionError(f"unexpected url={url}")
+
+    store = FakeVectorStore()
+    store.points["MKT-STALE"] = VectorPoint(id="MKT-STALE", vector=[0.0], payload={"ticker": "MKT-STALE"})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        await run(client=client, limiter=limiter, embedder=RecordingEmbedder(), store=store, batch_size=10)
+
+    assert "MKT-STALE" in store.points
+
+
+@pytest.mark.asyncio
+async def test_run_skips_retain_when_shutdown_requested(limiter: AsyncLimiter) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url.startswith(EVENTS_URL):
+            status = request.url.params.get("status")
+            if status == "open":
+                return _json_response(200, {"events": [EVENT_OPEN], "cursor": None})
+            raise AssertionError(f"unexpected status={status!r}")
+        if url.startswith(f"{SERIES_URL}/"):
+            return _json_response(200, {"series": SERIES})
+        raise AssertionError(f"unexpected url={url}")
+
+    store = FakeVectorStore()
+    store.points["MKT-STALE"] = VectorPoint(id="MKT-STALE", vector=[0.0], payload={"ticker": "MKT-STALE"})
+    shutdown_event = asyncio.Event()
+    shutdown_event.set()
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        await run(
+            client=client,
+            limiter=limiter,
+            embedder=RecordingEmbedder(),
+            store=store,
+            batch_size=10,
+            shutdown_event=shutdown_event,
+        )
+
+    assert "MKT-STALE" in store.points
+
+
+@pytest.mark.asyncio
 async def test_run_embeds_new_open_market(limiter: AsyncLimiter) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
@@ -261,8 +311,6 @@ async def test_run_embeds_new_open_market(limiter: AsyncLimiter) -> None:
             status = request.url.params.get("status")
             if status == "open":
                 return _json_response(200, {"events": [EVENT_OPEN], "cursor": None})
-            if status == "closed":
-                return _json_response(200, {"events": [], "cursor": None})
             raise AssertionError(f"unexpected status={status!r}")
         if url.startswith(f"{SERIES_URL}/"):
             return _json_response(200, {"series": SERIES})

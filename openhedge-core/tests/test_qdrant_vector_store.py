@@ -12,6 +12,7 @@ from openhedge_core.vector_store import (
     PayloadUpdate,
     QdrantVectorStore,
     VectorPoint,
+    delete_points_not_in,
     point_id,
 )
 from qdrant_client import AsyncQdrantClient
@@ -120,6 +121,37 @@ async def test_delete_points() -> None:
 
         existing = await store.get_existing_ids(["MKT-CLOSED", "KEEP"])
         assert existing == {"KEEP"}
+
+
+@pytest.mark.asyncio
+async def test_count_points() -> None:
+    async with qdrant_store() as (_, store):
+        assert await store.count_points() == 0
+        await store.upsert_points(
+            [
+                VectorPoint(id="A", vector=[0.0] * TEST_EMBEDDING_DIM, payload={"ticker": "A"}),
+                VectorPoint(id="B", vector=[0.0] * TEST_EMBEDDING_DIM, payload={"ticker": "B"}),
+            ]
+        )
+        assert await store.count_points() == 2
+
+
+@pytest.mark.asyncio
+async def test_delete_points_not_in_keeps_only_keep_ids() -> None:
+    async with qdrant_store() as (_, store):
+        await store.upsert_points(
+            [
+                VectorPoint(id="KEEP", vector=[0.0] * TEST_EMBEDDING_DIM, payload={"ticker": "KEEP"}),
+                VectorPoint(id="STALE", vector=[0.0] * TEST_EMBEDDING_DIM, payload={"ticker": "STALE"}),
+                VectorPoint(id="ALSO-STALE", vector=[0.0] * TEST_EMBEDDING_DIM, payload={"ticker": "ALSO-STALE"}),
+            ]
+        )
+
+        await delete_points_not_in(store, {"KEEP"}, batch_size=1)
+
+        existing = await store.get_existing_ids(["KEEP", "STALE", "ALSO-STALE"])
+        assert existing == {"KEEP"}
+        assert await store.count_points() == 1
 
 
 @pytest.mark.asyncio
