@@ -102,6 +102,9 @@ class FakeSearchStore:
     async def delete_points(self, ids: Sequence[str]) -> None:
         return
 
+    async def count_points(self) -> int:
+        return 0
+
     async def scroll_points(
         self,
         filters: Filter | None,

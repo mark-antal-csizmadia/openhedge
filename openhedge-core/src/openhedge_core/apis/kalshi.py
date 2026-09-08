@@ -35,18 +35,8 @@ TIME_PERIOD = 1
 
 EVENTS_LIMIT = 200
 
-CLOSED_MARKET_STATUSES: frozenset[KalshiMarketStatus] = frozenset(
-    {
-        KalshiMarketStatus.CLOSED,
-        KalshiMarketStatus.DETERMINED,
-        KalshiMarketStatus.FINALIZED,
-    }
-)
 OPEN_MARKET_STATUSES: frozenset[KalshiMarketStatus] = frozenset({KalshiMarketStatus.ACTIVE})
 OPEN_EVENT_STATUSES: frozenset[KalshiEventStatus] = frozenset({KalshiEventStatus.OPEN})
-OPEN_AND_CLOSED_EVENT_STATUSES: frozenset[KalshiEventStatus] = frozenset(
-    {KalshiEventStatus.OPEN, KalshiEventStatus.CLOSED}
-)
 
 
 class GetEventsRequest(BaseModel):
@@ -154,19 +144,5 @@ async def produce_open_markets(
         limiter,
         event_statuses=OPEN_EVENT_STATUSES,
         market_statuses=OPEN_MARKET_STATUSES,
-    ):
-        yield item
-
-
-async def produce_closed_markets(
-    client: httpx.AsyncClient,
-    limiter: AsyncLimiter,
-) -> AsyncIterator[tuple[KalshiEvent, KalshiMarket, int]]:
-    """Yield closed binary markets under open and closed events."""
-    async for item in produce_markets(
-        client,
-        limiter,
-        event_statuses=OPEN_AND_CLOSED_EVENT_STATUSES,
-        market_statuses=CLOSED_MARKET_STATUSES,
     ):
         yield item

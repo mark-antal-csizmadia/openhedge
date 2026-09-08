@@ -8,7 +8,6 @@ from openhedge_core.apis.kalshi import (
     EVENTS_URL,
     GetEventsRequest,
     get_events,
-    produce_closed_markets,
     produce_events,
     produce_open_markets,
 )
@@ -168,30 +167,6 @@ async def test_produce_events_does_not_mutate_params(limiter: AsyncLimiter) -> N
 
 
 @pytest.mark.asyncio
-async def test_produce_closed_markets_paginates_open_then_closed(limiter: AsyncLimiter) -> None:
-    statuses: list[str | None] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        assert str(request.url).startswith(EVENTS_URL)
-        status = request.url.params.get("status")
-        statuses.append(status)
-        if status == KalshiEventStatus.OPEN:
-            return _json_response(200, {"events": [EVENT_OPEN], "cursor": None})
-        if status == KalshiEventStatus.CLOSED:
-            return _json_response(200, {"events": [EVENT_CLOSED], "cursor": None})
-        raise AssertionError(f"unexpected status={status!r}")
-
-    transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(transport=transport) as client:
-        items = [item async for item in produce_closed_markets(client=client, limiter=limiter)]
-
-    assert statuses == [KalshiEventStatus.OPEN, KalshiEventStatus.CLOSED]
-    assert [market.ticker for _, market, _ in items] == ["MKT-CLOSED", "MKT-CLOSED"]
-    assert all(market.status == KalshiMarketStatus.CLOSED for _, market, _ in items)
-    assert [strike_order for _, _, strike_order in items] == [1, 0]
-
-
-@pytest.mark.asyncio
 async def test_produce_open_markets_yields_active_only(limiter: AsyncLimiter) -> None:
     statuses: list[str | None] = []
 
@@ -236,30 +211,4 @@ async def test_produce_open_markets_skips_scalar(limiter: AsyncLimiter) -> None:
         items = [item async for item in produce_open_markets(client=client, limiter=limiter)]
 
     assert [market.ticker for _, market, _ in items] == ["MKT-ACTIVE"]
-    assert [strike_order for _, _, strike_order in items] == [0]
-
-
-@pytest.mark.asyncio
-async def test_produce_closed_markets_skips_scalar(limiter: AsyncLimiter) -> None:
-    event_open = {
-        **EVENT_OPEN,
-        "markets": [
-            MARKET_CLOSED,
-            {**MARKET_CLOSED, "ticker": "MKT-CLOSED-SCALAR", "market_type": "scalar"},
-        ],
-    }
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        status = request.url.params.get("status")
-        if status == KalshiEventStatus.OPEN:
-            return _json_response(200, {"events": [event_open], "cursor": None})
-        if status == KalshiEventStatus.CLOSED:
-            return _json_response(200, {"events": [], "cursor": None})
-        raise AssertionError(f"unexpected status={status!r}")
-
-    transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(transport=transport) as client:
-        items = [item async for item in produce_closed_markets(client=client, limiter=limiter)]
-
-    assert [market.ticker for _, market, _ in items] == ["MKT-CLOSED"]
     assert [strike_order for _, _, strike_order in items] == [0]

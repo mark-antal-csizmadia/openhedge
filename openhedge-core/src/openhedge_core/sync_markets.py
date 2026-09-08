@@ -13,7 +13,6 @@ from openhedge_core.apis.kalshi import (
     TIME_PERIOD,
     GetSeriesRequest,
     get_series,
-    produce_closed_markets,
     produce_open_markets,
 )
 from openhedge_core.consumer import Consumer
@@ -22,7 +21,7 @@ from openhedge_core.producer import Producer
 from openhedge_core.settings import SyncMarketsSettings
 from openhedge_core.types.kalshi import KalshiSeries
 from openhedge_core.types.market import Market
-from openhedge_core.vector_store import PayloadUpdate, QdrantVectorStore, VectorPoint, VectorStore
+from openhedge_core.vector_store import PayloadUpdate, QdrantVectorStore, VectorPoint, VectorStore, delete_points_not_in
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,7 @@ HTTP_TIMEOUT = 30.0
 
 
 def http_client() -> httpx.AsyncClient:
-    """Create an HTTP client sized for concurrent open and closed event pagination."""
+    """Create an HTTP client for Kalshi event pagination."""
     return httpx.AsyncClient(
         limits=httpx.Limits(
             max_connections=HTTP_MAX_CONNECTIONS,
@@ -90,13 +89,6 @@ async def consume_open_batch(
     logger.info("open batch created=%s updated=%s", len(to_create), len(to_update))
 
 
-async def consume_closed_batch(batch: list[str], *, store: VectorStore) -> None:
-    if not batch:
-        return
-    await store.delete_points(batch)
-    logger.info("closed batch deleted=%s", len(batch))
-
-
 async def _run_pipeline[T](
     name: str,
     produce_fn: Callable[[], AsyncIterator[T]],
@@ -145,42 +137,31 @@ async def run(
 ) -> None:
     shutdown_event = shutdown_event or asyncio.Event()
     series_cache = SeriesCache(client, limiter)
+    seen: set[str] = set()
 
     async def produce_open() -> AsyncIterator[Market]:
         async for event, market, strike_order in produce_open_markets(client=client, limiter=limiter):
             series = await series_cache.get(event.series_ticker)
             yield Market.from_kalshi_rest_api(event, market, series, strike_order=strike_order)
 
-    async def produce_closed() -> AsyncIterator[str]:
-        async for _, market, _ in produce_closed_markets(client=client, limiter=limiter):
-            yield market.ticker
-
     async def consume_open(batch: list[Market]) -> None:
+        seen.update(market.ticker for market in batch)
         await consume_open_batch(batch, embedder=embedder, store=store)
 
-    async def consume_closed(batch: list[str]) -> None:
-        await consume_closed_batch(batch, store=store)
-
-    results = await asyncio.gather(
-        _run_pipeline(
-            "open",
-            produce_open,
-            consume_open,
-            batch_size=batch_size,
-            shutdown_event=shutdown_event,
-        ),
-        _run_pipeline(
-            "closed",
-            produce_closed,
-            consume_closed,
-            batch_size=batch_size,
-            shutdown_event=shutdown_event,
-        ),
-        return_exceptions=True,
+    await _run_pipeline(
+        "open",
+        produce_open,
+        consume_open,
+        batch_size=batch_size,
+        shutdown_event=shutdown_event,
     )
-    errors = [result for result in results if isinstance(result, BaseException)]
-    if errors:
-        raise BaseExceptionGroup("market sync failed", errors)
+    if shutdown_event.is_set():
+        logger.warning("skip retain: shutdown requested")
+        return
+    if not seen:
+        logger.warning("skip retain: no open tickers")
+        return
+    await delete_points_not_in(store, seen, batch_size=batch_size)
 
 
 async def async_main() -> None:
