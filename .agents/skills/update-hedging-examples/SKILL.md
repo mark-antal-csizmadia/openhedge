@@ -58,7 +58,7 @@ When you touch an example, set `updatedAt` to **today’s UTC date** as `YYYY-MM
 - `examples.ts`: `updatedAt: "YYYY-MM-DD"`
 - README and try-hedging skill: a line `Updated YYYY-MM-DD.` after the note
 
-Untouched examples keep their old date. Fit notes stay `Should find a good hedge.` (no “as of”), except **US Bowling Alley**, which keeps the unit-economics sentence because that prompt names no dollar hit. London keeps a why-none note with no date inside the note.
+Untouched examples keep their old date. Fit notes stay `Should find a good hedge.` (no “as of”), except **US Bowling Alley**, which keeps the unit-economics sentence because that prompt names no dollar hit. **London Bookshop** keeps a why-none note with no date inside the note.
 
 ## Strike policy
 
@@ -70,11 +70,11 @@ Untouched examples keep their old date. Fit notes stay `Should find a good hedge
 - Sweden’s cost line stays `could increase our inference cost by $1,000` with no time window (`next month`, `this year`).
 - If nothing maps cleanly, do not invent a strike. Change the note to say no live strike, still bump `updatedAt`.
 
-**London Trucking Company** — expected **none**.
+**London Bookshop** — expected **none**.
 
-- Do not promote Brent, WTI, or US diesel ($/gallon) into a fit.
-- Re-run search and rewrite the why-none note from today’s nearest neighbors (what exists and why it still does not pay a UK pump bill).
-- Leave `1.81 GBP` unless a real UK-litre contract appears.
+- Do not promote US city rainfall into a UK flood fit.
+- Re-run search and keep the why-none note brief: Kalshi has US city rainfall but not UK, unless a real UK rainfall or flood contract appears.
+- Keep the bookshop by the Thames unless a real UK flood or Thames contract appears.
 
 ## Commit
 

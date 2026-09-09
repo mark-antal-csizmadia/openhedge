@@ -170,11 +170,11 @@ Should find a good hedge.
 
 Updated 2026-09-09.
 
-**London Trucking Company** (UK, fuel)
+**London Bookshop** (UK, flood)
 
-> I run a four-truck fleet in London, UK. Diesel above 1.81 GBP per litre could cost us about £5,000 this year.
+> I run a bookshop by the Thames in London, UK. If the street floods, we could lose about £5,000 in stock and closed days.
 
-Should not find a good hedge as Kalshi has US diesel in dollars per gallon this week and at month-end, same-day WTI and month-end Brent strikes, and US gasoline year-highs, but those do not pay when UK fuel duty, VAT, wholesale, or sterling moves London pump prices independently of a US gallon or crude print.
+Should not find a good hedge as Kalshi has US city rainfall but not UK.
 
 Updated 2026-09-09.
 
