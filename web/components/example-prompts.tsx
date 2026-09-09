@@ -32,6 +32,7 @@ export function ExamplePrompts() {
                 <p className="text-sm leading-relaxed text-muted-foreground text-pretty">
                   {example.note}
                 </p>
+                <p className="text-sm text-muted-foreground">Updated {example.updatedAt}</p>
                 <CopyButton text={example.prompt} label="Copy prompt" />
               </CardContent>
             </Card>

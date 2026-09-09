@@ -23,6 +23,7 @@ This repo ships Cursor agent skills. If you are using Cursor (or another agent t
 - [`.agents/skills/how-to-publish-railway-template/SKILL.md`](.agents/skills/how-to-publish-railway-template/SKILL.md) — generate and publish the marketplace template from that stack
 - [`.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md) — add-on: Cloudflare Tunnel in front of Caddy (custom domain, WAF, rate limits)
 - [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/skills/try-hedging-examples/SKILL.md) — connect MCP and run Blanket-style example prompts
+- [`.agents/skills/update-hedging-examples/SKILL.md`](.agents/skills/update-hedging-examples/SKILL.md) — refresh example prompts and dates from the live catalog
 - [`.agents/skills/how-to-deploy-landing/SKILL.md`](.agents/skills/how-to-deploy-landing/SKILL.md) — Next.js landing page on its own Railway project (`openhedge.app`)
 
 [`AGENTS.md`](AGENTS.md) already tells agents to follow those skills.
@@ -139,27 +140,43 @@ Example prompts (adapted from [Blanket’s casebook](https://tryblanket.app/#exa
 
 **Sweden AI App Building Platform** (Sweden, AI compute)
 
-> I run an AI app building platform in Stockholm, Sweden. NVIDIA H100 GPU hourly price above $2.75 could increase our inference cost by $1,000 next month.
+> I run an AI app building platform in Stockholm, Sweden. NVIDIA H100 GPU hourly price above $3.53 could increase our inference cost by $1,000.
 
-Should find a good hedge as of 21/08/2026.
+Should find a good hedge.
+
+Updated 2026-09-09.
 
 **Berlin Sports Bar** (Germany, sports)
 
 > I run a bar in Berlin, Germany. If the Union Berlin win a Bundesliga match, I want to fund a customer offer; the promo could cost us about $1,000.
 
-Should find a good hedge as of 21/08/2026.
+Should find a good hedge.
+
+Updated 2026-09-09.
 
 **US Bowling Alley** (USA, electricity)
 
-> I own a small bowling alley in Seattle, US. If electricity per kilowatt-hour exceeds $19.6, our operating costs would increase. Can I offset this risk?
+> I own a small bowling alley in Providence, Rhode Island. If electricity per kilowatt-hour exceeds 30.0¢, our operating costs would increase. Can I offset this risk?
 
-Should find a good hedge as of 21/08/2026.
+Should find a good hedge. Without a quantified sum of money at risk, the openhedge MCP calculates unit economics.
 
-**London Trucking Company** (UK, fuel)
+Updated 2026-09-09.
 
-> I run a four-truck fleet in London, UK. Diesel above 1.81 GBP per litre could cost us about £5,000 this year.
+**Breckenridge Ski Shop** (USA, weather)
 
-Should not find a good hedge as Kalshi has market for US diesel in dollars per gallon that expire this month, same-day or month-end Brent and WTI strikes, and US gasoline year-highs, but those do not pay when UK fuel duty, VAT, wholesale, or sterling moves London pump prices independently of a US gallon or crude print.
+> I run a ski rental shop in Breckenridge, Colorado. If Breckenridge Ski Resort does not open before November 8, we could miss about $1,000 of early-season revenue.
+
+Should find a good hedge.
+
+Updated 2026-09-09.
+
+**London Bookshop** (UK, flood)
+
+> I run a bookshop by the Thames in London, UK. If the street floods, we could lose about £5,000 in stock and closed days.
+
+Should not find a good hedge as Kalshi has US city rainfall but not UK.
+
+Updated 2026-09-09.
 
 openhedge does not place trades. Review live price, size, fees, eligibility, and rules on Kalshi before doing anything with a suggested market.
 
