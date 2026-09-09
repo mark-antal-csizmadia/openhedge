@@ -22,8 +22,8 @@ export const EXAMPLES = [
     loc: "USA",
     chip: "electricity",
     prompt:
-      "I own a small bowling alley in Seattle, US. If electricity per kilowatt-hour exceeds $19.6, our operating costs would increase. Can I offset this risk?",
-    note: "Should not find a good hedge as the only national kWh ladder is the leftover August print, and Rhode Island annual residential cents do not pay a Seattle alley bill.",
+      "I own a small bowling alley in Providence, Rhode Island. If electricity per kilowatt-hour exceeds 30.0¢, our operating costs would increase. Can I offset this risk?",
+    note: "Should find a good hedge.",
     updatedAt: "2026-09-09",
   },
   {

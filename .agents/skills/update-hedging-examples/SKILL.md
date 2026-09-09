@@ -64,7 +64,7 @@ Untouched examples keep their old date. Fit notes stay `Should find a good hedge
 
 **Sweden AI App Building Platform**, **Berlin Sports Bar**, **US Bowling Alley** — expected **fit**.
 
-- Search the same exposure (H100 hourly compute, Union Berlin match, US electricity kWh).
+- Search the same exposure (H100 hourly compute, Union Berlin match, Rhode Island residential kWh). Keep the bowling alley in Providence; only rewrite the ¢ strike.
 - Prefer an open market whose `end_datetime` is still useful (not a leftover print in a few days), YES ask not pinned near 0 or 1, and `yes_ask_size` > 0.
 - Rewrite only the threshold already in the sentence (H100 hourly price, Union Berlin, kWh). Keep hit dollars (`$1,000`) unless the user asks otherwise.
 - If nothing maps cleanly, do not invent a strike. Change the note to say no live strike, still bump `updatedAt`.

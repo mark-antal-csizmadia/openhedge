@@ -156,9 +156,9 @@ Updated 2026-09-09.
 
 **US Bowling Alley** (USA, electricity)
 
-> I own a small bowling alley in Seattle, US. If electricity per kilowatt-hour exceeds $19.6, our operating costs would increase. Can I offset this risk?
+> I own a small bowling alley in Providence, Rhode Island. If electricity per kilowatt-hour exceeds 30.0¢, our operating costs would increase. Can I offset this risk?
 
-Should not find a good hedge as the only national kWh ladder is the leftover August print, and Rhode Island annual residential cents do not pay a Seattle alley bill.
+Should find a good hedge.
 
 Updated 2026-09-09.
 
