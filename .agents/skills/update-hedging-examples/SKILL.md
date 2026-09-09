@@ -9,7 +9,7 @@ description: >-
 
 # Update hedging examples
 
-Rewrite the four example prompts from the live catalog so a visitor still has a nearby strike (or an honest none). Do not place trades. Do not add YAML or a refresh script. This skill does not run a demo hedge for the user; that is [try-hedging-examples](../try-hedging-examples/SKILL.md).
+Rewrite the example prompts from the live catalog so a visitor still has a nearby strike (or an honest none). Do not place trades. Do not add YAML or a refresh script. This skill does not run a demo hedge for the user; that is [try-hedging-examples](../try-hedging-examples/SKILL.md).
 
 ## Workflow
 
@@ -62,11 +62,11 @@ Untouched examples keep their old date. Fit notes stay `Should find a good hedge
 
 ## Strike policy
 
-**Sweden AI App Building Platform**, **Berlin Sports Bar**, **US Bowling Alley** — expected **fit**.
+**Sweden AI App Building Platform**, **Berlin Sports Bar**, **US Bowling Alley**, **Breckenridge Ski Shop** — expected **fit**.
 
-- Search the same exposure (H100 hourly compute, Union Berlin match, Rhode Island residential kWh). Keep the bowling alley in Providence; only rewrite the ¢ strike.
+- Search the same exposure (H100 hourly compute, Union Berlin match, Rhode Island residential kWh, Breckenridge ski resort opening). Keep the bowling alley in Providence and the ski shop in Breckenridge; only rewrite the ¢ strike or the November open-by date.
 - Prefer an open market whose `end_datetime` is still useful (not a leftover print in a few days), YES ask not pinned near 0 or 1, and `yes_ask_size` > 0.
-- Rewrite only the threshold already in the sentence (H100 hourly price, Union Berlin, kWh). Keep hit dollars (`$1,000`) unless the user asks otherwise.
+- Rewrite only the threshold already in the sentence (H100 hourly price, Union Berlin, kWh, Breckenridge open-by date). Keep hit dollars (`$1,000`) unless the user asks otherwise. A late opening is a NO on “before {date}”.
 - If nothing maps cleanly, do not invent a strike. Change the note to say no live strike, still bump `updatedAt`.
 
 **London Trucking Company** — expected **none**.

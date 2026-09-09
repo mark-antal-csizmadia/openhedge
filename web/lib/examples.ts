@@ -27,6 +27,15 @@ export const EXAMPLES = [
     updatedAt: "2026-09-09",
   },
   {
+    title: "Breckenridge Ski Shop",
+    loc: "USA",
+    chip: "weather",
+    prompt:
+      "I run a ski rental shop in Breckenridge, Colorado. If Breckenridge Ski Resort does not open before November 8, we could miss about $1,000 of early-season revenue.",
+    note: "Should find a good hedge.",
+    updatedAt: "2026-09-09",
+  },
+  {
     title: "London Trucking Company",
     loc: "UK",
     chip: "fuel",

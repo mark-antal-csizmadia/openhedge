@@ -83,6 +83,14 @@ Should find a good hedge.
 
 Updated 2026-09-09.
 
+**Breckenridge Ski Shop** (USA, weather)
+
+> I run a ski rental shop in Breckenridge, Colorado. If Breckenridge Ski Resort does not open before November 8, we could miss about $1,000 of early-season revenue.
+
+Should find a good hedge.
+
+Updated 2026-09-09.
+
 **London Trucking Company** (UK, fuel)
 
 > I run a four-truck fleet in London, UK. Diesel above 1.81 GBP per litre could cost us about £5,000 this year.
