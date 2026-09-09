@@ -18,6 +18,7 @@ To self-host on Railway (GitHub-sourced), follow [`.agents/skills/how-to-deploy-
 To publish the Railway marketplace template, follow [`.agents/skills/how-to-publish-railway-template/SKILL.md`](.agents/skills/how-to-publish-railway-template/SKILL.md).
 To add Cloudflare Tunnel on an existing stack, follow [`.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md).
 To connect MCP and try example hedges, follow [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/skills/try-hedging-examples/SKILL.md).
+To refresh those example prompts and dates from the live catalog, follow [`.agents/skills/update-hedging-examples/SKILL.md`](.agents/skills/update-hedging-examples/SKILL.md).
 To deploy the landing page (separate Railway project), follow [`.agents/skills/how-to-deploy-landing/SKILL.md`](.agents/skills/how-to-deploy-landing/SKILL.md).
 
 ## Layout

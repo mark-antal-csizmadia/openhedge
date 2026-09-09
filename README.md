@@ -23,6 +23,7 @@ This repo ships Cursor agent skills. If you are using Cursor (or another agent t
 - [`.agents/skills/how-to-publish-railway-template/SKILL.md`](.agents/skills/how-to-publish-railway-template/SKILL.md) — generate and publish the marketplace template from that stack
 - [`.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md`](.agents/skills/how-to-add-cloudflare-tunnel/SKILL.md) — add-on: Cloudflare Tunnel in front of Caddy (custom domain, WAF, rate limits)
 - [`.agents/skills/try-hedging-examples/SKILL.md`](.agents/skills/try-hedging-examples/SKILL.md) — connect MCP and run Blanket-style example prompts
+- [`.agents/skills/update-hedging-examples/SKILL.md`](.agents/skills/update-hedging-examples/SKILL.md) — refresh example prompts and dates from the live catalog
 - [`.agents/skills/how-to-deploy-landing/SKILL.md`](.agents/skills/how-to-deploy-landing/SKILL.md) — Next.js landing page on its own Railway project (`openhedge.app`)
 
 [`AGENTS.md`](AGENTS.md) already tells agents to follow those skills.
@@ -141,25 +142,33 @@ Example prompts (adapted from [Blanket’s casebook](https://tryblanket.app/#exa
 
 > I run an AI app building platform in Stockholm, Sweden. NVIDIA H100 GPU hourly price above $2.75 could increase our inference cost by $1,000 next month.
 
-Should find a good hedge as of 21/08/2026.
+Should find a good hedge.
+
+Updated 2026-08-21.
 
 **Berlin Sports Bar** (Germany, sports)
 
 > I run a bar in Berlin, Germany. If the Union Berlin win a Bundesliga match, I want to fund a customer offer; the promo could cost us about $1,000.
 
-Should find a good hedge as of 21/08/2026.
+Should find a good hedge.
+
+Updated 2026-08-21.
 
 **US Bowling Alley** (USA, electricity)
 
 > I own a small bowling alley in Seattle, US. If electricity per kilowatt-hour exceeds $19.6, our operating costs would increase. Can I offset this risk?
 
-Should find a good hedge as of 21/08/2026.
+Should find a good hedge.
+
+Updated 2026-08-21.
 
 **London Trucking Company** (UK, fuel)
 
 > I run a four-truck fleet in London, UK. Diesel above 1.81 GBP per litre could cost us about £5,000 this year.
 
 Should not find a good hedge as Kalshi has market for US diesel in dollars per gallon that expire this month, same-day or month-end Brent and WTI strikes, and US gasoline year-highs, but those do not pay when UK fuel duty, VAT, wholesale, or sterling moves London pump prices independently of a US gallon or crude print.
+
+Updated 2026-08-21.
 
 openhedge does not place trades. Review live price, size, fees, eligibility, and rules on Kalshi before doing anything with a suggested market.
 

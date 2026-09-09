@@ -8,7 +8,7 @@ description: >-
 
 # Try hedging examples
 
-Walk the user through connecting MCP, then run one example hedge. Do not place trades. If the stack is not up, follow [how-to-get-started](../how-to-get-started/SKILL.md) first.
+Walk the user through connecting MCP, then run one example hedge. Do not place trades. If the stack is not up, follow [how-to-get-started](../how-to-get-started/SKILL.md) first. To refresh prompts, notes, and dates from the live catalog, follow [update-hedging-examples](../update-hedging-examples/SKILL.md).
 
 ## Workflow
 
@@ -63,14 +63,30 @@ Source: [tryblanket.app/#examples](https://tryblanket.app/#examples). Offer thes
 
 > I run an AI app building platform in Stockholm, Sweden. NVIDIA H100 GPU hourly price above $2.75 could increase our inference cost by $1,000 next month.
 
+Should find a good hedge.
+
+Updated 2026-08-21.
+
 **Berlin Sports Bar** (Germany, sports)
 
 > I run a bar in Berlin, Germany. If the Union Berlin win a Bundesliga match, I want to fund a customer offer; the promo could cost us about $1,000.
+
+Should find a good hedge.
+
+Updated 2026-08-21.
 
 **US Bowling Alley** (USA, electricity)
 
 > I own a small bowling alley in Seattle, US. If electricity per kilowatt-hour exceeds $19.6, our operating costs would increase. Can I offset this risk?
 
+Should find a good hedge.
+
+Updated 2026-08-21.
+
 **London Trucking Company** (UK, fuel)
 
 > I run a four-truck fleet in London, UK. Diesel above 1.81 GBP per litre could cost us about £5,000 this year.
+
+Should not find a good hedge as Kalshi has market for US diesel in dollars per gallon that expire this month, same-day or month-end Brent and WTI strikes, and US gasoline year-highs, but those do not pay when UK fuel duty, VAT, wholesale, or sterling moves London pump prices independently of a US gallon or crude print.
+
+Updated 2026-08-21.
