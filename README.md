@@ -140,7 +140,7 @@ Example prompts (adapted from [Blanket’s casebook](https://tryblanket.app/#exa
 
 **Sweden AI App Building Platform** (Sweden, AI compute)
 
-> I run an AI app building platform in Stockholm, Sweden. NVIDIA H100 GPU hourly price above $3.53 could increase our inference cost by $1,000 next month.
+> I run an AI app building platform in Stockholm, Sweden. NVIDIA H100 GPU hourly price above $3.53 could increase our inference cost by $1,000.
 
 Should find a good hedge.
 
@@ -158,7 +158,7 @@ Updated 2026-09-09.
 
 > I own a small bowling alley in Providence, Rhode Island. If electricity per kilowatt-hour exceeds 30.0¢, our operating costs would increase. Can I offset this risk?
 
-Should find a good hedge.
+Should find a good hedge. Without a quantified sum of money at risk, the openhedge MCP calculates unit economics.
 
 Updated 2026-09-09.
 

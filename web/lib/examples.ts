@@ -4,7 +4,7 @@ export const EXAMPLES = [
     loc: "Sweden",
     chip: "AI compute",
     prompt:
-      "I run an AI app building platform in Stockholm, Sweden. NVIDIA H100 GPU hourly price above $3.53 could increase our inference cost by $1,000 next month.",
+      "I run an AI app building platform in Stockholm, Sweden. NVIDIA H100 GPU hourly price above $3.53 could increase our inference cost by $1,000.",
     note: "Should find a good hedge.",
     updatedAt: "2026-09-09",
   },
@@ -23,7 +23,7 @@ export const EXAMPLES = [
     chip: "electricity",
     prompt:
       "I own a small bowling alley in Providence, Rhode Island. If electricity per kilowatt-hour exceeds 30.0¢, our operating costs would increase. Can I offset this risk?",
-    note: "Should find a good hedge.",
+    note: "Should find a good hedge. Without a quantified sum of money at risk, the openhedge MCP calculates unit economics.",
     updatedAt: "2026-09-09",
   },
   {
