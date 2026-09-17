@@ -65,7 +65,7 @@ Source: [tryblanket.app/#examples](https://tryblanket.app/#examples). Offer thes
 
 Should find a good hedge.
 
-Updated 2026-09-09.
+Updated 2026-09-17.
 
 **Berlin Sports Bar** (Germany, sports)
 
@@ -73,7 +73,7 @@ Updated 2026-09-09.
 
 Should find a good hedge.
 
-Updated 2026-09-09.
+Updated 2026-09-17.
 
 **US Bowling Alley** (USA, electricity)
 
@@ -81,15 +81,15 @@ Updated 2026-09-09.
 
 Should find a good hedge. Without a quantified sum of money at risk, the openhedge MCP calculates unit economics.
 
-Updated 2026-09-09.
+Updated 2026-09-17.
 
 **Breckenridge Ski Shop** (USA, weather)
 
-> I run a ski rental shop in Breckenridge, Colorado. If Breckenridge Ski Resort does not open before November 8, we could miss about $1,000 of early-season revenue.
+> I run a ski rental shop in Breckenridge, Colorado. If Breckenridge Ski Resort does not open before November 15, we could miss about $1,000 of early-season revenue.
 
 Should find a good hedge.
 
-Updated 2026-09-09.
+Updated 2026-09-17.
 
 **London Bookshop** (UK, flood)
 
@@ -97,4 +97,4 @@ Updated 2026-09-09.
 
 Should not find a good hedge as Kalshi has US city rainfall but not UK.
 
-Updated 2026-09-09.
+Updated 2026-09-17.
