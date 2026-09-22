@@ -144,15 +144,15 @@ Example prompts (adapted from [Blanket’s casebook](https://tryblanket.app/#exa
 
 Should find a good hedge.
 
-Updated 2026-09-17.
+Updated 2026-09-22.
 
 **Berlin Sports Bar** (Germany, sports)
 
-> I run a bar in Berlin, Germany. If the Union Berlin win a Bundesliga match, I want to fund a customer offer; the promo could cost us about $1,000.
+> I run a bar in Berlin, Germany. If Bayern Munich win their women's Champions League match against Manchester City, I want to fund a customer offer; the promo could cost us about $1,000.
 
 Should find a good hedge.
 
-Updated 2026-09-17.
+Updated 2026-09-22.
 
 **US Bowling Alley** (USA, electricity)
 
@@ -160,15 +160,15 @@ Updated 2026-09-17.
 
 Should find a good hedge. Without a quantified sum of money at risk, the openhedge MCP calculates unit economics.
 
-Updated 2026-09-17.
+Updated 2026-09-22.
 
 **Breckenridge Ski Shop** (USA, weather)
 
-> I run a ski rental shop in Breckenridge, Colorado. If Breckenridge Ski Resort does not open before November 15, we could miss about $1,000 of early-season revenue.
+> I run a ski rental shop in Breckenridge, Colorado. If Breckenridge Ski Resort does not open before November 8, we could miss about $1,000 of early-season revenue.
 
 Should find a good hedge.
 
-Updated 2026-09-17.
+Updated 2026-09-22.
 
 **London Bookshop** (UK, flood)
 
@@ -176,7 +176,7 @@ Updated 2026-09-17.
 
 Should not find a good hedge as Kalshi has US city rainfall but not UK.
 
-Updated 2026-09-17.
+Updated 2026-09-22.
 
 openhedge does not place trades. Review live price, size, fees, eligibility, and rules on Kalshi before doing anything with a suggested market.
 
