@@ -83,9 +83,9 @@ output: {
 
 **Sweden AI App Building Platform**, **Berlin Sports Bar**, **US Bowling Alley**, **Breckenridge Ski Shop** — expected **fit**.
 
-- Search the same exposure (H100 hourly compute, a Champions League match, Rhode Island residential kWh, Breckenridge ski resort opening). Keep the bar in Berlin, the bowling alley in Providence, and the ski shop in Breckenridge; only rewrite the ¢ strike, the Champions League team and opponent, or the November open-by date.
+- Search the same exposure (H100 hourly compute, a men's Bundesliga match, Rhode Island residential kWh, Breckenridge ski resort opening). Keep the bar in Berlin, the bowling alley in Providence, and the ski shop in Breckenridge; only rewrite the ¢ strike, the Bundesliga team and opponent, or the November open-by date.
 - Prefer an open market whose `end_datetime` is still useful (not a leftover print in a few days), YES ask not pinned near 0 or 1, and `yes_ask_size` > 0.
-- Rewrite only the threshold already in the sentence (H100 hourly price, Champions League team and opponent, kWh, Breckenridge open-by date). Keep hit dollars (`$1,000`) on Sweden, Berlin, and Breckenridge unless the user asks otherwise. Do not add a dollar hit to the bowling alley prompt. Berlin stays one open match, not a season-long winner. A late opening is a NO on “before {date}”.
+- Rewrite only the threshold already in the sentence (H100 hourly price, Bundesliga team and opponent, kWh, Breckenridge open-by date). Keep hit dollars (`$1,000`) on Sweden, Berlin, and Breckenridge unless the user asks otherwise. Do not add a dollar hit to the bowling alley prompt. Berlin stays one open men's Bundesliga match, not a season-long winner. A late opening is a NO on “before {date}”.
 - Sweden’s cost line stays `could increase our inference cost by $1,000` with no time window (`next month`, `this year`).
 - If nothing maps cleanly, do not invent a strike. Change the note to say no live strike, still bump `updatedAt`, and store a `verdict=none` `output`.
 
