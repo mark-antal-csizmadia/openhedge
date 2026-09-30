@@ -65,7 +65,7 @@ Source: [tryblanket.app/#examples](https://tryblanket.app/#examples). Offer thes
 
 Should find a good hedge.
 
-Updated 2026-09-25.
+Updated 2026-09-30.
 
 **Berlin Sports Bar** (Germany, sports)
 
@@ -73,7 +73,7 @@ Updated 2026-09-25.
 
 Should find a good hedge.
 
-Updated 2026-09-25.
+Updated 2026-09-30.
 
 **US Bowling Alley** (USA, electricity)
 
@@ -81,7 +81,7 @@ Updated 2026-09-25.
 
 Should find a good hedge. Without a quantified sum of money at risk, the openhedge MCP calculates unit economics.
 
-Updated 2026-09-25.
+Updated 2026-09-30.
 
 **Breckenridge Ski Shop** (USA, weather)
 
@@ -89,7 +89,7 @@ Updated 2026-09-25.
 
 Should find a good hedge.
 
-Updated 2026-09-25.
+Updated 2026-09-30.
 
 **London Bookshop** (UK, flood)
 
@@ -97,4 +97,4 @@ Updated 2026-09-25.
 
 Should not find a good hedge as Kalshi has US city rainfall but not UK.
 
-Updated 2026-09-25.
+Updated 2026-09-30.
