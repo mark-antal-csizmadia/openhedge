@@ -6,7 +6,7 @@ export const EXAMPLES = [
     prompt:
       "I run an AI app building platform in Stockholm, Sweden. NVIDIA H100 GPU hourly price above $3.53 could increase our inference cost by $1,000.",
     note: "Should find a good hedge.",
-    updatedAt: "2026-09-30",
+    updatedAt: "2026-10-23",
     output: {
       tools: [
         { name: "search_markets", args: 'q="NVIDIA H100 GPU hourly price SXM"' },
@@ -22,7 +22,7 @@ export const EXAMPLES = [
       reply: `Your business risk: NVIDIA H100 hourly price above $3.53 could increase this platform's inference cost by $1,000.
 
 
-YES pays if Ornn reports H100 SXM compute per hour above the named strike by year-end 2026, which is the inference-cost jump this platform flagged. Filled 500 contracts ($500.00 gross) against the $1,000.00 you estimated (coverage 0.5).
+YES pays if Ornn reports H100 SXM compute per hour above the named strike by Dec 31, 2026, which is the inference-cost jump this platform flagged. Filled 500 contracts ($500.00 gross) against the $1,000.00 you estimated (coverage 0.5).
 
 
 The relevant market(s) identified:
@@ -32,7 +32,7 @@ Your estimated business loss
 $1,000.00
 
 Cost today
-$285.00
+$350.00
 
 Gross payout if YES
 $500.00
@@ -45,9 +45,9 @@ Estimated business loss
 Market payout
 +$500.00
 Cost today
--$285.00
+-$350.00
 Net impact
--$785.00
+-$850.00
 
 Book quoted 500 of 1,000 contracts ($1,000.00 target); filled 500 ($500.00 gross, coverage 0.5). Size is capped at that ask.
 
@@ -61,12 +61,12 @@ If the contract does not pay
 The business loss does not occur; you still paid for the contracts.
 
 Cost today
--$285.00
+-$350.00
 Net impact
--$285.00
+-$350.00
 
 What can differ
-The contract is H100 SXM on Ornn's USD index by Dec 31, 2026, not Stockholm cloud invoices or a nearer billing window. It can close early if the index prints.`,
+The contract is H100 SXM on Ornn's USD index by Dec 31, 2026, not Stockholm cloud invoices or a nearer billing window. It can close before that expiration.`,
     },
   },
   {
@@ -74,35 +74,34 @@ The contract is H100 SXM on Ornn's USD index by Dec 31, 2026, not Stockholm clou
     loc: "Germany",
     chip: "sports",
     prompt:
-      "I run a bar in Berlin, Germany. If Werder Bremen win their Bundesliga match against Borussia Dortmund, I want to fund a customer offer; the promo could cost us about $1,000.",
+      "I run a bar in Berlin, Germany. If SC Freiburg win their Bundesliga match against FC Augsburg, I want to fund a customer offer; the promo could cost us about $1,000.",
     note: "Should find a good hedge.",
-    updatedAt: "2026-09-30",
+    updatedAt: "2026-10-23",
     output: {
       tools: [
-        { name: "search_markets", args: 'q="Borussia Dortmund Bundesliga match winner"' },
-        { name: "search_markets", args: 'q="Werder Bremen Bundesliga game"' },
-        { name: "get_event", args: "event_ticker=KXBUNDESLIGAGAME-26OCT09BVBSVW" },
-        { name: "get_market", args: "ticker=KXBUNDESLIGAGAME-26OCT09BVBSVW-SVW" },
+        { name: "search_markets", args: 'q="Augsburg vs Freiburg Bundesliga match"' },
+        { name: "get_event", args: "event_ticker=KXBUNDESLIGAGAME-26OCT31FCASCF" },
+        { name: "get_market", args: "ticker=KXBUNDESLIGAGAME-26OCT31FCASCF-SCF" },
         {
           name: "hedge",
-          args: "ticker=KXBUNDESLIGAGAME-26OCT09BVBSVW-SVW side=yes estimated_hit_dollars=1000",
+          args: "ticker=KXBUNDESLIGAGAME-26OCT31FCASCF-SCF side=yes estimated_hit_dollars=1000",
         },
         { name: "present_hedge", args: "verdict=fit" },
       ],
-      reply: `Your business risk: A Werder Bremen Bundesliga win against Borussia Dortmund could cost this bar about $1,000 in a customer offer.
+      reply: `Your business risk: An SC Freiburg Bundesliga win against FC Augsburg could cost this bar about $1,000 in a customer offer.
 
 
-YES pays if Bremen wins the Oct 9 Bundesliga match against Dortmund in 90 minutes plus stoppage, which is the promo trigger, covering the $1,000.00 you estimated with 1,000 contracts.
+YES pays if Freiburg wins the Oct 31 Bundesliga match against Augsburg in 90 minutes plus stoppage, which is the promo trigger, covering the $1,000.00 you estimated with 1,000 contracts.
 
 
 The relevant market(s) identified:
-On Kalshi · YES outcome · Bremen - Dortmund vs Bremen, URL: https://kalshi.com/markets/KXBUNDESLIGAGAME/KXBUNDESLIGAGAME-26OCT09BVBSVW?op_market_ticker=KXBUNDESLIGAGAME-26OCT09BVBSVW-SVW
+On Kalshi · YES outcome · Freiburg - Augsburg vs Freiburg, URL: https://kalshi.com/markets/KXBUNDESLIGAGAME/KXBUNDESLIGAGAME-26OCT31FCASCF?op_market_ticker=KXBUNDESLIGAGAME-26OCT31FCASCF-SCF
 
 Your estimated business loss
 $1,000.00
 
 Cost today
-$130.00
+$460.00
 
 Gross payout if YES
 $1,000.00
@@ -115,9 +114,9 @@ Estimated business loss
 Market payout
 +$1,000.00
 Cost today
--$130.00
+-$460.00
 Net impact
--$130.00
+-$460.00
 
 
 
@@ -125,12 +124,12 @@ If the contract does not pay
 The business loss does not occur; you still paid for the contracts.
 
 Cost today
--$130.00
+-$460.00
 Net impact
--$130.00
+-$460.00
 
 What can differ
-This is one scheduled men's Bundesliga match, not any Bremen win. Extra time and penalties do not count; a tie is a separate market. The book can close early once a winner is declared.`,
+This is one scheduled men's Bundesliga match, not any Freiburg win. Extra time and penalties do not count; a tie is a separate market. The book can close early once a winner is declared.`,
     },
   },
   {
@@ -140,7 +139,7 @@ This is one scheduled men's Bundesliga match, not any Bremen win. Extra time and
     prompt:
       "I own a small bowling alley in Providence, Rhode Island. If electricity per kilowatt-hour exceeds 30.0¢, our operating costs would increase. Can I offset this risk?",
     note: "Should find a good hedge. Without a quantified sum of money at risk, the openhedge MCP calculates unit economics.",
-    updatedAt: "2026-09-30",
+    updatedAt: "2026-10-23",
     output: {
       tools: [
         {
@@ -177,7 +176,7 @@ EIA statewide residential average is a proxy for a Providence bowling alley's co
     prompt:
       "I run a ski rental shop in Breckenridge, Colorado. If Breckenridge Ski Resort does not open before November 8, we could miss about $1,000 of early-season revenue.",
     note: "Should find a good hedge.",
-    updatedAt: "2026-09-30",
+    updatedAt: "2026-10-23",
     output: {
       tools: [
         { name: "search_markets", args: 'q="Breckenridge Ski Resort open"' },
@@ -192,7 +191,7 @@ EIA statewide residential average is a proxy for a Providence bowling alley's co
       reply: `Your business risk: If Breckenridge Ski Resort does not open before November 8, this shop could miss about $1,000 of early-season revenue.
 
 
-NO pays if the resort does not run seasonal opening operations before Nov 8, 2026, which is the late-open case this shop flagged. Filled 5 contracts ($5.00 gross) against the $1,000.00 you estimated (coverage 0.005).
+NO pays if the resort does not run seasonal opening operations before Nov 8, 2026, which is the late-open case this shop flagged. Filled 20 contracts ($20.00 gross) against the $1,000.00 you estimated (coverage 0.02).
 
 
 The relevant market(s) identified:
@@ -202,10 +201,10 @@ Your estimated business loss
 $1,000.00
 
 Cost today
-$1.60
+$4.80
 
 Gross payout if NO
-$5.00
+$20.00
 
 If both happen
 The business loss occurs and the contract pays.
@@ -213,30 +212,30 @@ The business loss occurs and the contract pays.
 Estimated business loss
 -$1,000.00
 Market payout
-+$5.00
++$20.00
 Cost today
--$1.60
+-$4.80
 Net impact
--$996.60
+-$984.80
 
-Book quoted 5 of 1,000 contracts ($1,000.00 target); filled 5 ($5.00 gross, coverage 0.005). Size is capped at that ask.
+Book quoted 20 of 1,000 contracts ($1,000.00 target); filled 20 ($20.00 gross, coverage 0.02). Size is capped at that ask.
 
 
 
 Still uncovered
-$995.00
+$980.00
 
 
 If the contract does not pay
 The business loss does not occur; you still paid for the contracts.
 
 Cost today
--$1.60
+-$4.80
 Net impact
--$1.60
+-$4.80
 
 What can differ
-Opening is defined as a public passenger lift for downhill skiing, not a projected date. Season-passholder access can count; preview or employee days do not. Size is capped at the quoted NO ask.`,
+Opening is defined as a public passenger lift for downhill skiing or snowboarding, not a projected date. Season-passholder access can count; employee, preview, and private days do not.`,
     },
   },
   {
@@ -246,7 +245,7 @@ Opening is defined as a public passenger lift for downhill skiing, not a project
     prompt:
       "I run a bookshop by the Thames in London, UK. If the street floods, we could lose about £5,000 in stock and closed days.",
     note: "Should not find a good hedge as Kalshi has US city rainfall but not UK.",
-    updatedAt: "2026-09-30",
+    updatedAt: "2026-10-23",
     output: {
       tools: [
         { name: "search_markets", args: 'q="London Thames flood street flooding UK rainfall"' },
@@ -258,7 +257,7 @@ Opening is defined as a public passenger lift for downhill skiing, not a project
 
 No market found — no hedge.
 
-Kalshi lists US city rainfall contracts (NYC, Los Angeles) but not UK rainfall, Thames flooding, or London street flooding. Those US prints do not map to this shop's exposure.`,
+Kalshi lists US city rainfall contracts (NYC, Los Angeles) and a Paris rain print, but not UK rainfall, Thames flooding, or London street flooding. Those prints do not map to this shop's exposure.`,
     },
   },
 ] as const;

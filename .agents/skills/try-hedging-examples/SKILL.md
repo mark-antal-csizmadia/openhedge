@@ -65,15 +65,15 @@ Source: [tryblanket.app/#examples](https://tryblanket.app/#examples). Offer thes
 
 Should find a good hedge.
 
-Updated 2026-09-30.
+Updated 2026-10-23.
 
 **Berlin Sports Bar** (Germany, sports)
 
-> I run a bar in Berlin, Germany. If Werder Bremen win their Bundesliga match against Borussia Dortmund, I want to fund a customer offer; the promo could cost us about $1,000.
+> I run a bar in Berlin, Germany. If SC Freiburg win their Bundesliga match against FC Augsburg, I want to fund a customer offer; the promo could cost us about $1,000.
 
 Should find a good hedge.
 
-Updated 2026-09-30.
+Updated 2026-10-23.
 
 **US Bowling Alley** (USA, electricity)
 
@@ -81,7 +81,7 @@ Updated 2026-09-30.
 
 Should find a good hedge. Without a quantified sum of money at risk, the openhedge MCP calculates unit economics.
 
-Updated 2026-09-30.
+Updated 2026-10-23.
 
 **Breckenridge Ski Shop** (USA, weather)
 
@@ -89,7 +89,7 @@ Updated 2026-09-30.
 
 Should find a good hedge.
 
-Updated 2026-09-30.
+Updated 2026-10-23.
 
 **London Bookshop** (UK, flood)
 
@@ -97,4 +97,4 @@ Updated 2026-09-30.
 
 Should not find a good hedge as Kalshi has US city rainfall but not UK.
 
-Updated 2026-09-30.
+Updated 2026-10-23.
